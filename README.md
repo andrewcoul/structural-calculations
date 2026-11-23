@@ -2,7 +2,7 @@
 
 A suite of **15 standalone Google Colab structural engineering calculation notebooks** built on a shared, unit-tested Python calculation engine (`structcalc`).
 
-Every notebook embeds the full `structcalc` library and AISC Shapes Database v16.0 directly inside a collapsed setup cell—no `pip install`, no Google Drive mount, and no local Python environment required. Click any **Open in Colab** badge below to run a calculation sheet right in your browser.
+Every notebook embeds the full `structcalc` library and AISC Shapes Database v16.0 directly inside a collapsed setup cell. No `pip install`, no Google Drive mount, and no local Python environment required. Click any **Open in Colab** badge below to run a calculation sheet right in your browser.
 
 > **Engineering disclaimer:** These notebooks are independent design aids and are not affiliated with or endorsed by any commercial structural engineering software vendor. A licensed structural engineer must independently review and verify all inputs, assumptions, code provisions, and results before use.
 
