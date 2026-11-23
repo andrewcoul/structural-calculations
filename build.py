@@ -15,8 +15,9 @@ markdown cell) that embeds the structcalc library as a zip, so the
 notebook runs in Colab with no Drive mount and no pip install.
 
 Usage:
-    python build.py            # build all
-    python build.py 01 05      # build sources whose name starts with 01 or 05
+    python build.py              # build all (empty outputs)
+    python build.py --execute    # build and save default example outputs
+    python build.py 01 05        # build sources whose name starts with 01 or 05
 """
 
 from __future__ import annotations
@@ -159,12 +160,29 @@ def build_one(src: pathlib.Path) -> pathlib.Path:
     return out
 
 
+def execute_notebook(path: pathlib.Path) -> None:
+    import nbformat
+    from nbclient import NotebookClient
+
+    nb = nbformat.read(path, as_version=4)
+    NotebookClient(nb, timeout=300, kernel_name="python3").execute()
+    # Strip transient execution timestamps for clean git diffs
+    for cell in nb.cells:
+        if cell.cell_type == "code":
+            cell.metadata.pop("execution", None)
+    nbformat.write(nb, path)
+
+
 def main(argv):
+    execute = "--execute" in argv
+    prefixes = [a for a in argv if a != "--execute"]
     srcs = sorted(SRC.glob("*.py"))
-    if argv:
-        srcs = [s for s in srcs if any(s.name.startswith(a) for a in argv)]
+    if prefixes:
+        srcs = [s for s in srcs if any(s.name.startswith(a) for a in prefixes)]
     for s in srcs:
         out = build_one(s)
+        if execute:
+            execute_notebook(out)
         print(f"built {out.relative_to(ROOT)} ({out.stat().st_size / 1024:.0f} KB)")
 
 
