@@ -132,3 +132,35 @@ def test_steel_beam_autoselect():
                        bracing="Top flange continuous")
     assert o["report"].ok
     assert o["section"]["name"].startswith("W16X")
+
+
+def test_load_schematic_plots():
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from structcalc.beam import plot as beam_plot
+    from structcalc.calcs import steel_beam, steel_column, wood_column, concrete_column
+
+    sb = steel_beam.run("W18X35", span_type="Overhang one end (right)", span=18, overhang_right=6,
+                        w={"D": 0.4, "L": 0.8}, extra_loads="P, 12, 5, L; t, 0, 10, 0.2, 0.6, S; M, 6, 15, W")
+    _, _, res = sb["governing"]["flex"]
+    fig = beam_plot(res, title="Beam loads test", beam=sb["beam"])
+    assert len(fig.axes) == 4
+    plt.close(fig)
+
+    sc = steel_column.run(section="W10X49", H=14, Lcx=14, Lcy=14, Lcz=14, Lb=14,
+                          case_loads={"D": {"P": 60, "Mx_top": 20, "Mx_bot": -10}, "L": {"P": 80}},
+                          ex=6.0, wx={"W": 0.2})
+    fig = steel_column.plot(sc)
+    assert len(fig.axes) == 3
+    plt.close(fig)
+
+    wc = wood_column.run(size="2x6", P={"D": 0.4, "L": 0.8}, wind_psf=25.0, trib_width=16.0)
+    fig = wood_column.plot(wc)
+    assert len(fig.axes) == 2
+    plt.close(fig)
+
+    cc = concrete_column.run(case_loads={"D": (200, 30, -15, 10, 10), "L": (120, 20, -10, 5, 5)})
+    fig = concrete_column.plot(cc)
+    assert len(fig.axes) == 3
+    plt.close(fig)

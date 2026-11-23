@@ -25,7 +25,7 @@ Each calculation sheet consists of four files:
   - Single-line string inputs cannot hold newlines; separate list items with `;` or `,`.
   - Numeric dropdowns **must** include `{type:"raw"}` (for example, `bar_bot = 8  #@param [3, 4, 5, 6, 7, 8] {type:"raw"}`) so Colab preserves integer/float types when edited.
 - **Notebook copy:** The top markdown cell contains `# Title`, a bold code-basis line, a concise scope summary, the **How to use** line, and the engineering disclaimer.
-- **Shared core modules** (review carefully before modifying): `report.py`, `beam.py`, `beaminput.py`, `loads.py`, `steel.py`, `concrete.py`, `concrete_member.py`, `foundation.py`, `wood.py`, `wood_conn.py`, `build.py`.
+- **Shared core modules** (review carefully before modifying): `report.py`, `beam.py`, `beaminput.py`, `load_plots.py`, `loads.py`, `steel.py`, `concrete.py`, `concrete_member.py`, `foundation.py`, `wood.py`, `wood_conn.py`, `build.py`.
 
 ## Development commands
 

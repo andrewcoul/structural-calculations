@@ -163,8 +163,48 @@ def analyze(size="2x6", material="Sawn lumber", species="DF-L", grade="Stud", me
     if built_up:
         r.note(f"Built-up column: weak-axis CP multiplied by Kf = {Kf:g} (nailed, NDS 15.3.2). "
                "Verify fastening requirements of NDS 15.3.3.")
-    return {"report": r, "member": m, "section": sec, "governing": gov, "rows": rows}
+    return {"report": r, "member": m, "section": sec, "governing": gov, "rows": rows,
+            "loads": dict(H=height, P=P, ex=ex, ey=ey, wind_psf=wind_psf, trib_width=trib_width,
+                          w_plf=w_plf, weak_bracing=weak_bracing, weak_interval=weak_interval)}
 
 
 def run(**kw):
     return analyze(**kw)
+
+
+def plot(out):
+    import matplotlib.pyplot as plt
+
+    from ..load_plots import draw_column_loads
+
+    ld = out["loads"]
+    rows = out["rows"]
+    h_fig = max(4.2, 0.34 * len(rows) + 1.4)
+    fig, ax = plt.subplots(1, 2, figsize=(10.5, h_fig), gridspec_kw={"width_ratios": [0.95, 1.45]})
+    brace_z = None
+    note = ""
+    if ld["weak_bracing"].startswith("Braced by sheathing"):
+        note = "Weak axis braced by sheathing"
+    elif ld["weak_bracing"] == "Braced at interval" and ld["weak_interval"] > 0:
+        n = int(ld["H"] // ld["weak_interval"])
+        brace_z = [i * ld["weak_interval"] for i in range(1, n + 1) if i * ld["weak_interval"] < ld["H"]]
+        note = f"Weak axis braced @ {ld['weak_interval']:g} ft"
+    draw_column_loads(
+        ax[0],
+        H=ld["H"],
+        P_cases=ld["P"],
+        w_lat_x={"W": ld["w_plf"] / 1000.0} if ld["w_plf"] else None,
+        ex=ld["ex"],
+        ey=ld["ey"],
+        bracing_note=note,
+        brace_z=brace_z,
+        title="Applied service loads",
+    )
+    ax[1].barh([r["Combination"] for r in rows], [min(r["Interaction"], 2) for r in rows], color="tab:blue")
+    ax[1].axvline(1.0, color="tab:red", lw=1.2)
+    ax[1].set_xlabel("Combined ratio (NDS 3.9)")
+    ax[1].set_title("Interaction by load combination")
+    ax[1].invert_yaxis()
+    ax[1].grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    return fig

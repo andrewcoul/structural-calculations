@@ -271,17 +271,35 @@ def run(shape="Rectangular tied", b=16.0, h=16.0, D=18.0, fc=4000.0, fy=60000.0,
     if shape == "Rectangular spiral":
         r.note("Rectangular spiral: circular spiral with core diameter = least side - 2 cover.")
     return {"report": r, "diagram_x": dx, "diagram_y": dy, "rows": rows, "bars": pts,
-            "sec_x": sec_x, "sec_y": sec_y, "circular": circ}
+            "sec_x": sec_x, "sec_y": sec_y, "circular": circ,
+            "loads": dict(H=lu, case_loads=case_loads)}
 
 
 def plot(out):
     import matplotlib.pyplot as plt
 
-    axes = [("x", out["diagram_x"], "Mux (k-ft)")]
+    from ..load_plots import draw_column_loads
+
+    ld = out["loads"]
+    cl = ld["case_loads"]
+    pm_axes = [("x", out["diagram_x"], "Mux (k-ft)")]
     if not out["circular"]:
-        axes.append(("y", out["diagram_y"], "Muy (k-ft)"))
-    fig, ax = plt.subplots(1, len(axes), figsize=(6 * len(axes), 5), squeeze=False)
-    for a, (nm, d, key) in zip(ax[0], axes):
+        pm_axes.append(("y", out["diagram_y"], "Muy (k-ft)"))
+    n_tot = 1 + len(pm_axes)
+    ratios = [0.9] + [1.2] * len(pm_axes)
+    fig, ax = plt.subplots(1, n_tot, figsize=(4.5 * n_tot + 0.5, 5.0),
+                           gridspec_kw={"width_ratios": ratios})
+    draw_column_loads(
+        ax[0],
+        H=ld["H"],
+        P_cases={c: v[0] for c, v in cl.items()},
+        Mx_top={c: v[1] for c, v in cl.items()},
+        Mx_bot={c: v[2] for c, v in cl.items()},
+        My_top={c: v[3] for c, v in cl.items()},
+        My_bot={c: v[4] for c, v in cl.items()},
+        title="Applied service loads",
+    )
+    for a, (nm, d, key) in zip(ax[1:], pm_axes):
         a.plot(d["Mn"] / 12, d["Pn"], "--", color="gray", label="Nominal (Pn,max cap)")
         a.plot(d["phiMn"] / 12, d["phiPn"], color="tab:blue", lw=2, label="Design (phi)")
         pts = [(row[key], row["Pu (k)"]) for row in out["rows"]]
@@ -293,6 +311,6 @@ def plot(out):
         a.set_ylabel("P (kip)")
         a.grid(alpha=0.3)
         a.legend(fontsize=8)
-        a.set_title(f"P-M interaction, bending about {nm}")
+        a.set_title(f"P–M interaction, bending about {nm}")
     fig.tight_layout()
     return fig

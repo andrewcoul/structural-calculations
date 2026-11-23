@@ -174,7 +174,8 @@ def analyze(section, Fy=50.0, method="LRFD", H=12.0, Lcx=12.0, Lcy=12.0, Lcz=12.
            "reduction); for the direct analysis method enter K = 1 and reduce stiffness separately.")
     r.note("B2 (sway) amplification is not computed. Enter second-order moments if the frame sways.")
     r.note("Lateral loads wx/wy act on a column pinned at both ends between the end moments.")
-    return {"report": r, "section": p, "rows": rows, "governing": gov, "compression": comp}
+    return {"report": r, "section": p, "rows": rows, "governing": gov, "compression": comp,
+            "loads": dict(H=H, case_loads=case_loads, ex=ex, ey=ey, wx=wx, wy=wy)}
 
 
 def run(section="W10X33", auto_select=False, depth_filter="", **kw):
@@ -198,18 +199,36 @@ def run(section="W10X33", auto_select=False, depth_filter="", **kw):
 def plot(out):
     import matplotlib.pyplot as plt
 
+    from ..load_plots import draw_column_loads
+
     row, g = out["governing"]
-    fig, ax = plt.subplots(1, 2, figsize=(7, 4), sharey=True)
-    ax[0].plot(g["Mx"], g["z"], color="tab:red")
-    ax[0].fill_betweenx(g["z"], g["Mx"], color="tab:red", alpha=0.25)
-    ax[0].set_title("Mx x B1 (kip-ft)")
-    ax[1].plot(g["My"], g["z"], color="tab:blue")
-    ax[1].fill_betweenx(g["z"], g["My"], color="tab:blue", alpha=0.25)
-    ax[1].set_title("My x B1 (kip-ft)")
-    ax[0].set_ylabel("Height (ft)")
-    for a in ax:
+    ld = out["loads"]
+    cl = ld["case_loads"]
+    fig, ax = plt.subplots(1, 3, figsize=(10.5, 4.4), sharey=True,
+                           gridspec_kw={"width_ratios": [1.15, 1.0, 1.0]})
+    draw_column_loads(
+        ax[0],
+        H=ld["H"],
+        P_cases={c: v.get("P", 0.0) for c, v in cl.items()},
+        Mx_top={c: v.get("Mx_top", 0.0) for c, v in cl.items()},
+        Mx_bot={c: v.get("Mx_bot", 0.0) for c, v in cl.items()},
+        My_top={c: v.get("My_top", 0.0) for c, v in cl.items()},
+        My_bot={c: v.get("My_bot", 0.0) for c, v in cl.items()},
+        w_lat_x=ld["wx"],
+        w_lat_y=ld["wy"],
+        ex=ld["ex"],
+        ey=ld["ey"],
+        title="Applied service loads",
+    )
+    ax[1].plot(g["Mx"], g["z"], color="tab:red")
+    ax[1].fill_betweenx(g["z"], g["Mx"], color="tab:red", alpha=0.25)
+    ax[1].set_title("Mx × B1 (kip-ft)")
+    ax[2].plot(g["My"], g["z"], color="tab:blue")
+    ax[2].fill_betweenx(g["z"], g["My"], color="tab:blue", alpha=0.25)
+    ax[2].set_title("My × B1 (kip-ft)")
+    for a in ax[1:]:
         a.axvline(0, color="k", lw=0.6)
         a.grid(alpha=0.3)
-    fig.suptitle(f"{out['section']['name']} - {row['Combination']}")
+    fig.suptitle(f"{out['section']['name']} — {row['Combination']}")
     fig.tight_layout()
     return fig

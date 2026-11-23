@@ -257,25 +257,33 @@ class Beam:
         return res
 
 
-def plot(result: BeamResult, title="", show_defl=True):
+def plot(result: BeamResult, title="", show_defl=True, beam=None):
     import matplotlib.pyplot as plt
 
-    n = 3 if show_defl else 2
-    fig, ax = plt.subplots(n, 1, figsize=(9, 2.2 * n), sharex=True)
-    ax[0].fill_between(result.x, result.V, color="tab:blue", alpha=0.3)
-    ax[0].plot(result.x, result.V, color="tab:blue")
-    ax[0].set_ylabel("V (kip)")
-    ax[1].fill_between(result.x, result.M, color="tab:red", alpha=0.3)
-    ax[1].plot(result.x, result.M, color="tab:red")
-    ax[1].set_ylabel("M (kip-ft)")
+    from .load_plots import draw_beam_loads
+
+    n = (3 if show_defl else 2) + (1 if beam is not None else 0)
+    ratios = ([1.15] if beam is not None else []) + ([1.0, 1.0, 1.0] if show_defl else [1.0, 1.0])
+    fig, ax = plt.subplots(n, 1, figsize=(9, 2.1 * n + 0.3), sharex=True,
+                           gridspec_kw={"height_ratios": ratios})
+    i0 = 0
+    if beam is not None:
+        draw_beam_loads(ax[0], beam, title=title)
+        i0 = 1
+    ax[i0].fill_between(result.x, result.V, color="tab:blue", alpha=0.3)
+    ax[i0].plot(result.x, result.V, color="tab:blue")
+    ax[i0].set_ylabel("V (kip)")
+    ax[i0 + 1].fill_between(result.x, result.M, color="tab:red", alpha=0.3)
+    ax[i0 + 1].plot(result.x, result.M, color="tab:red")
+    ax[i0 + 1].set_ylabel("M (kip-ft)")
     if show_defl:
-        ax[2].plot(result.x, -result.defl, color="tab:green")
-        ax[2].set_ylabel("Defl (in)")
-    for a in ax:
+        ax[i0 + 2].plot(result.x, -result.defl, color="tab:green")
+        ax[i0 + 2].set_ylabel("Defl (in)")
+    for a in ax[i0:]:
         a.axhline(0, color="k", lw=0.6)
         a.grid(alpha=0.3)
     ax[-1].set_xlabel("x (ft)")
-    if title:
+    if title and beam is None:
         ax[0].set_title(title)
     fig.tight_layout()
     return fig

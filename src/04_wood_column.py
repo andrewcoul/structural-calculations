@@ -78,16 +78,8 @@ out = wood_column.run(
 out["report"].show()
 
 # %%
-#@title 6. Interaction by load combination
-import matplotlib.pyplot as plt
-
-rows = out["rows"]
-fig, ax = plt.subplots(figsize=(9, 0.35 * len(rows) + 1))
-ax.barh([r["Combination"] for r in rows], [min(r["Interaction"], 2) for r in rows], color="tab:blue")
-ax.axvline(1.0, color="tab:red", lw=1)
-ax.set_xlabel("Combined ratio (NDS 3.9)")
-ax.invert_yaxis()
-fig.tight_layout()
+#@title 6. Applied loads and interaction by load combination
+fig = wood_column.plot(out)
 
 # %%
 #@title 7. Save report as HTML (optional)

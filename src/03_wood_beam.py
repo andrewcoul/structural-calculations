@@ -92,11 +92,11 @@ out = wood_beam.run(
 out["report"].show()
 
 # %%
-#@title 7. Diagrams (governing bending combination)
+#@title 7. Loads and diagrams (governing bending combination)
 from structcalc.beam import plot
 
 name, seg, res, _ = out["governing"]["flex"]
-fig = plot(res, title=f"{out['section'].name} — {name} ({method} combination)")
+fig = plot(res, title=f"{out['section'].name} — {name} ({method} combination)", beam=out["beam"])
 
 # %%
 #@title 8. Save report as HTML (optional)

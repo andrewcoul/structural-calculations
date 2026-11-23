@@ -88,7 +88,7 @@ out = steel_column.run(
 out["report"].show()
 
 # %%
-#@title 5. Moment diagrams (governing combination, amplified)
+#@title 5. Applied loads and amplified moment diagrams (governing combination)
 fig = steel_column.plot(out)
 
 # %%

@@ -72,7 +72,7 @@ out = concrete_column.run(
 out["report"].show()
 
 # %%
-#@title 6. Interaction diagram
+#@title 6. Applied loads and P–M interaction diagram
 fig = concrete_column.plot(out)
 
 # %%

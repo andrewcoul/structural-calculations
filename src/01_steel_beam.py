@@ -64,11 +64,11 @@ out = steel_beam.run(
 out["report"].show()
 
 # %%
-#@title 5. Diagrams (governing flexure combination)
+#@title 5. Loads and diagrams (governing flexure combination)
 from structcalc.beam import plot
 
 name, seg, res = out["governing"]["flex"]
-fig = plot(res, title=f"{out['section']['name']} — {name} ({method} combination)")
+fig = plot(res, title=f"{out['section']['name']} — {name} ({method} combination)", beam=out["beam"])
 
 # %%
 #@title 6. Save report as HTML (optional)

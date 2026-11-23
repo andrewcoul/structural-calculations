@@ -272,5 +272,5 @@ def run(section_type="Rectangular", b=12.0, h=24.0, bf=48.0, hf=4.0,
         r.note("T-beam: flange width bf must satisfy ACI 6.3.2.1. For negative moment the "
                "top bars are assumed within the web width for spacing checks.")
     return {"report": r, "per_case": per_case, "combos": results, "sec_pos": sec_pos,
-            "sec_neg": sec_neg, "length": length, "supports": supports,
+            "sec_neg": sec_neg, "beam": beam, "length": length, "supports": supports,
             "governing": {"pos": gp, "neg": gn, "shear": gv}}

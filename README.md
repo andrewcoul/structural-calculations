@@ -68,9 +68,9 @@ After changing any form field, update the calculation:
 
 ![Review the PASS/FAIL banner and full calculation report](docs/images/03-read-results.png)
 
-### Step 4 — Review diagrams
+### Step 4 — Review load schematics and diagrams
 
-Every calculation sheet with graphical output includes an auto-generated plot cell (shear, moment, and deflection envelopes; column $P$–$M$ interaction curves; footing soil pressure contours; retaining wall pressure sections; wind, seismic, or snow profiles). It refreshes automatically whenever you re-run the notebook.
+Beams and columns display an **applied-loads free-body graphic** (supports, distributed and point loads, eccentricities, end moments, and lateral wind loads) right alongside the engineering plots—shear, moment, and deflection diagrams, $P$–$M$ interaction curves, footing pressure contours, retaining wall pressures, and wind/seismic/snow profiles. Everything refreshes automatically whenever you re-run the notebook.
 
 ![Inspect auto-generated engineering diagrams in Colab](docs/images/04-diagrams.png)
 
