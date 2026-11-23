@@ -244,26 +244,114 @@ def run(pg=30.0, W2=0.55, risk_category="II", terrain="C", exposure="Partially e
     r.note("Windward drift truncation uses w = 8 h^2/hc <= 16 hc (same snow area as the 1:8 triangle); "
            "verify against 7.7.1. Leeward drift: hd not limited by lower-roof length (conservative).")
     r.note("Parapet/rooftop-unit drifts (7.8), partial loads (7.5), and ponding (7.11) are not computed.")
+    geom = dict(roof_type=roof_type, theta=theta, eave_to_ridge=eave_to_ridge,
+                upper_len=upper_len, lower_len=lower_len, step_h=step_h,
+                design_uniform=design_uniform, ros=ros)
     return {"report": r, "pf": pf, "ps": ps, "pm": pm, "Ct": ct, "Cs": cs, "drift": d,
-            "unbalanced": unb, "gamma": g}
+            "unbalanced": unb, "gamma": g, "geom": geom}
 
 
-def plot(out, lower_len):
+def plot(out, lower_len=None):
+    """Roof snow geometry sketch (left) + lower-roof drift pressure profile (right)."""
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Polygon, Rectangle
 
+    g = out.get("geom", {})
+    lower_len = lower_len if lower_len is not None else g.get("lower_len", 40.0)
     d = out["drift"]
-    fig, ax = plt.subplots(figsize=(8, 3.5))
+    unb = out["unbalanced"]
+
+    fig, (axs, axp) = plt.subplots(1, 2, figsize=(11.8, 4.1), gridspec_kw={"width_ratios": [1.2, 1.0]})
+
+    # --- Left: Roof geometry & snow depth/profile sketch ---
+    if d and d["required"]:
+        step_h = g.get("step_h", 10.0)
+        hb, hc = d["hb"], d["hc"]
+        u_show = min(g.get("upper_len", 100.0) * 0.25, max(lower_len * 0.45, 12.0))
+        # Upper and lower roof structures
+        axs.add_patch(Rectangle((-u_show, 0), u_show, step_h, fc="#cbd5e1", ec="#1e293b", lw=1.5, zorder=2))
+        axs.plot([0, lower_len], [0, 0], color="#1e293b", lw=2.5, zorder=3)
+        # Balanced snow layer hb on both roofs
+        axs.add_patch(Rectangle((-u_show, step_h), u_show, hb, fc="#bfdbfe", ec="#3b82f6", lw=1.0, zorder=3))
+        axs.add_patch(Rectangle((0, 0), lower_len, hb, fc="#bfdbfe", ec="#3b82f6", lw=1.0,
+                                label=f"Balanced hb={hb:.2f} ft (pf={out['pf']:.1f} psf)", zorder=3))
+        # Leeward drift triangle
+        dl = d["leeward"]
+        wl = min(dl["w"], lower_len)
+        hl_end = dl["h"] * max(1.0 - wl / dl["w"], 0.0) if dl["w"] > 0 else 0.0
+        axs.add_patch(Polygon([(0, hb), (0, hb + dl["h"]), (wl, hb + hl_end), (wl, hb)],
+                              closed=True, fc="#60a5fa", alpha=0.55, ec="#1d4ed8", lw=1.5,
+                              label=f"Leeward hd={dl['h']:.2f} ft, w={dl['w']:.1f} ft", zorder=4))
+        # Windward drift dashed outline
+        dw = d["windward"]
+        ww = min(dw["w"], lower_len)
+        hw_end = dw["h"] * max(1.0 - ww / dw["w"], 0.0) if dw["w"] > 0 else 0.0
+        axs.plot([0, ww], [hb + dw["h"], hb + hw_end], color="#ea580c", ls="--", lw=1.8,
+                 label=f"Windward hd={dw['h']:.2f} ft, w={dw['w']:.1f} ft", zorder=5)
+        # Step height & hc annotations
+        axs.annotate("", xy=(-0.08 * u_show, step_h), xytext=(-0.08 * u_show, 0),
+                     arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+        axs.text(-0.14 * u_show, step_h / 2, f"step\n{step_h:g} ft", ha="right", va="center", fontsize=8)
+        axs.text(lower_len * 0.52, hb + dl["h"] * 0.65,
+                 f"hc = {hc:.2f} ft\nmax = {out['pf'] + max(dl['pd'], dw['pd']):.1f} psf",
+                 ha="left", va="center", fontsize=8.2, fontweight="semibold", color="#1e3a8a",
+                 bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="#93c5fd"))
+        axs.set_xlim(-u_show - 2.0, lower_len + 2.0)
+        axs.set_ylim(-0.6, max(step_h + hb + 1.5, hb + dl["h"] + 1.5))
+        axs.set_xlabel("Distance from roof step (ft)")
+        axs.set_ylabel("Height above lower roof (ft)")
+        axs.set_title("Roof step drift geometry", fontsize=9.6, fontweight="semibold")
+        axs.legend(loc="upper right", fontsize=7.4)
+        axs.grid(alpha=0.25)
+    elif unb is not None:
+        W = g.get("eave_to_ridge", 20.0)
+        rise = W * math.tan(math.radians(g.get("theta", 15.0)))
+        axs.plot([-W, 0, W], [0, rise, 0], color="#1e293b", lw=2.4, zorder=3)
+        # Windward & leeward unbalanced load bands above roof
+        sc = max(rise, 6.0) * 0.38 / max(unb["leeward"] + unb["surcharge"], out["ps"], 1.0)
+        axs.fill([-W, 0, 0, -W], [0, rise, rise + unb["windward"] * sc, unb["windward"] * sc],
+                 fc="#93c5fd", alpha=0.5, ec="#2563eb", label=f"Windward: {unb['windward']:.1f} psf")
+        axs.fill([0, W, W, 0], [rise, 0, unb["leeward"] * sc, rise + unb["leeward"] * sc],
+                 fc="#60a5fa", alpha=0.5, ec="#1d4ed8", label=f"Leeward: {unb['leeward']:.1f} psf")
+        if unb["surcharge"] > 0 and unb["length"] > 0:
+            x_s = min(unb["length"], W)
+            y_s = rise * (1 - x_s / W)
+            axs.fill([0, x_s, x_s, 0],
+                     [rise + unb["leeward"] * sc, y_s + unb["leeward"] * sc,
+                      y_s + (unb["leeward"] + unb["surcharge"]) * sc,
+                      rise + (unb["leeward"] + unb["surcharge"]) * sc],
+                     fc="#f97316", alpha=0.55, ec="#c2410c",
+                     label=f"+Surcharge: {unb['surcharge']:.1f} psf ({unb['length']:.1f} ft)")
+        axs.set_xlabel("Distance from ridge (ft)")
+        axs.set_ylabel("Roof elevation (ft)")
+        axs.set_title(f"Unbalanced {g.get('roof_type', 'gable').lower()} roof snow ({g.get('theta', 0):g}°)",
+                      fontsize=9.6, fontweight="semibold")
+        axs.legend(fontsize=7.6)
+        axs.grid(alpha=0.25)
+    else:
+        W = g.get("eave_to_ridge", 20.0)
+        axs.plot([0, W], [0, 0], color="#1e293b", lw=2.5)
+        axs.add_patch(Rectangle((0, 0), W, out["pf"] / out["gamma"], fc="#bfdbfe", ec="#2563eb", lw=1.2))
+        axs.text(W / 2, out["pf"] / out["gamma"] + 0.15, f"pf = {out['pf']:.1f} psf", ha="center", va="bottom",
+                 fontweight="bold", color="#1d4ed8")
+        axs.set_ylim(-0.3, out["pf"] / out["gamma"] * 2.0 + 0.5)
+        axs.set_xlabel("Roof width (ft)")
+        axs.set_ylabel("Snow depth (ft)")
+        axs.set_title("Balanced roof snow load", fontsize=9.6, fontweight="semibold")
+        axs.grid(alpha=0.25)
+
+    # --- Right: Lower roof snow load profile (psf) ---
     if d and d["required"]:
         x, prof = drift_profile(out["pf"], d, lower_len)
-        ax.plot(x, prof["leeward"], label="Leeward drift + pf", color="tab:blue")
-        ax.plot(x, prof["windward"], label="Windward drift + pf", color="tab:orange", ls="--")
-    ax.axhline(out["pf"], color="k", lw=0.8, label="Balanced pf")
-    ax.set_xlabel("Distance from roof step (ft)")
-    ax.set_ylabel("Snow load (psf)")
-    ax.set_xlim(0, lower_len)
-    ax.set_ylim(bottom=0)
-    ax.grid(alpha=0.3)
-    ax.legend()
-    ax.set_title("Lower roof snow load at the step")
+        axp.plot(x, prof["leeward"], label="Leeward drift + pf", color="tab:blue", lw=1.8)
+        axp.plot(x, prof["windward"], label="Windward drift + pf", color="tab:orange", ls="--", lw=1.8)
+    axp.axhline(out["pf"], color="k", lw=0.8, label="Balanced pf")
+    axp.set_xlabel("Distance from roof step (ft)")
+    axp.set_ylabel("Snow load (psf)")
+    axp.set_xlim(0, lower_len)
+    axp.set_ylim(bottom=0)
+    axp.grid(alpha=0.3)
+    axp.legend(fontsize=8)
+    axp.set_title("Lower roof snow load at step (psf)", fontsize=9.6, fontweight="semibold")
     fig.tight_layout()
     return fig

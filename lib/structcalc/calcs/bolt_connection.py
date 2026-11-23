@@ -144,5 +144,103 @@ def run(D=0.625, shear="Single shear", side_material="Wood",
     r.note("Not checked: net section and shear tearout of members (NDS Appendix E, 11.1.2), "
            "steel side plate strength (AISC 360), bolt bearing on steel, and fire design.")
     r.note("Cg uses gross member areas without division among rows (NDS 12.3.6).")
+    geom = dict(D=D, n_rows=n_rows, n_per_row=n_per_row, spacing=spacing, row_spacing=row_spacing,
+                end_main=end_main, edge_main=edge_main, end_side=end_side, edge_side=edge_side,
+                w_main=w_main, w_side=w_side, theta_main=theta_main, theta_side=theta_side,
+                shear=shear, side_material=side_material, load=load)
     return {"report": r, "Z": Z, "mode": mode, "modes": modes, "Zp": Zp, "Zp_total": Zp_total,
-            "Cg": Cg, "CDelta": CDelta, "Fem": Fem, "Fes": Fes}
+            "Cg": Cg, "CDelta": CDelta, "Fem": Fem, "Fes": Fes, "geom": geom}
+
+
+def plot(out):
+    """Bolt pattern & member geometry sketch (left) + yield-mode capacities (right)."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.patches import Circle, Rectangle
+
+    g = out["geom"]
+    fig, (ax, axm) = plt.subplots(1, 2, figsize=(11.5, 4.2), gridspec_kw={"width_ratios": [1.3, 1.0]})
+
+    # --- Left: Bolt pattern on main member (grain horizontal) ---
+    D = g["D"]
+    nr, np_r = g["n_rows"], g["n_per_row"]
+    s, sr = g["spacing"], g["row_spacing"] if nr > 1 else 0.0
+    end_d, edge_d = g["end_main"], g["edge_main"]
+    span_x = (np_r - 1) * s
+    span_y = (nr - 1) * sr
+    L_mem = end_d + span_x + max(end_d * 0.75, 4 * D)
+    W_mem = max(g["w_main"], 2 * edge_d + span_y)
+
+    # Wood main member rectangle (grain horizontal)
+    ax.add_patch(Rectangle((0, 0), L_mem, W_mem, fc="#fef3c7", ec="#92400e", lw=1.6, zorder=1))
+    # Subtle grain lines
+    for yg in np.linspace(0.15 * W_mem, 0.85 * W_mem, 5):
+        ax.plot([0.2, L_mem - 0.2], [yg, yg], color="#d97706", alpha=0.22, lw=0.8, zorder=2)
+
+    # Bolt centers: first column at x = end_d, rows centered vertically (or edge_d from bottom)
+    y0 = max(edge_d, (W_mem - span_y) / 2)
+    if y0 + span_y > W_mem - edge_d * 0.5:
+        y0 = (W_mem - span_y) / 2
+    xs_b = [end_d + i * s for i in range(np_r)]
+    ys_b = [y0 + j * sr for j in range(nr)]
+    for xb in xs_b:
+        for yb in ys_b:
+            ax.add_patch(Circle((xb, yb), D / 2, fc="#334155", ec="#0f172a", lw=1.1, zorder=5))
+            ax.add_patch(Circle((xb, yb), D / 5, fc="white", ec="none", zorder=6))
+
+    # Load vector at angle theta_main from bolt centroid
+    cx_b, cy_b = sum(xs_b) / len(xs_b), sum(ys_b) / len(ys_b)
+    th = math.radians(g["theta_main"])
+    alen = max(0.32 * L_mem, 3.0)
+    dx, dy = -alen * math.cos(th), alen * math.sin(th)
+    ax.annotate("", xy=(cx_b + dx, cy_b + dy), xytext=(cx_b, cy_b),
+                arrowprops=dict(arrowstyle="-|>,head_length=0.5,head_width=0.3", color="#dc2626", lw=2.3),
+                zorder=8)
+    ax.text(cx_b + dx, cy_b + dy + 0.35,
+            f"P = {g['load']:,.0f} lb\n(θ = {g['theta_main']:g}°)",
+            ha="center", va="bottom", fontsize=8.0, fontweight="bold", color="#dc2626",
+            bbox=dict(boxstyle="round,pad=0.16", fc="white", ec="#dc2626", lw=0.7, alpha=0.92), zorder=9)
+
+    # Dimension callouts: end, spacing, row_spacing, edge
+    # End distance (bottom)
+    ax.annotate("", xy=(end_d, -0.10 * W_mem), xytext=(0, -0.10 * W_mem),
+                arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+    ax.text(end_d / 2, -0.14 * W_mem, f"end={end_d:g}\"", ha="center", va="top", fontsize=7.8, color="#1e293b")
+    if np_r > 1:
+        ax.annotate("", xy=(xs_b[1], -0.10 * W_mem), xytext=(xs_b[0], -0.10 * W_mem),
+                    arrowprops=dict(arrowstyle="<->", color="#2563eb", lw=1.0))
+        ax.text(0.5 * (xs_b[0] + xs_b[1]), -0.14 * W_mem, f"s={s:g}\"", ha="center", va="top",
+                fontsize=7.8, color="#1d4ed8")
+    # Row spacing & edge distance (right side)
+    rx = L_mem + 0.06 * L_mem
+    ax.annotate("", xy=(rx, ys_b[0]), xytext=(rx, 0),
+                arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+    ax.text(rx + 0.03 * L_mem, ys_b[0] / 2, f"edge={edge_d:g}\"", ha="left", va="center", fontsize=7.8)
+    if nr > 1:
+        ax.annotate("", xy=(rx, ys_b[1]), xytext=(rx, ys_b[0]),
+                    arrowprops=dict(arrowstyle="<->", color="#2563eb", lw=1.0))
+        ax.text(rx + 0.03 * L_mem, 0.5 * (ys_b[0] + ys_b[1]), f"sr={sr:g}\"", ha="left", va="center",
+                fontsize=7.8, color="#1d4ed8")
+    # Grain arrow
+    ax.annotate("", xy=(L_mem - 0.5, W_mem + 0.07 * W_mem), xytext=(L_mem - 0.28 * L_mem, W_mem + 0.07 * W_mem),
+                arrowprops=dict(arrowstyle="<->", color="#92400e", lw=1.0))
+    ax.text(L_mem - 0.14 * L_mem, W_mem + 0.10 * W_mem, "grain", ha="center", va="bottom",
+            fontsize=7.6, color="#92400e", style="italic")
+
+    ax.set_aspect("equal")
+    ax.set_xlim(-0.18 * L_mem, L_mem + 0.36 * L_mem)
+    ax.set_ylim(-0.30 * W_mem, max(W_mem * 1.24, cy_b + dy + 0.25 * W_mem))
+    ax.axis("off")
+    ax.set_title(f"Bolt pattern ({nr}×{np_r} @ {D:g}\" Ø, {g['shear'].lower()})",
+                 fontsize=9.6, fontweight="semibold")
+
+    # --- Right: Yield limit modes ---
+    modes = out["modes"]
+    axm.barh(list(modes), list(modes.values()),
+             color=["tab:red" if m == out["mode"] else "tab:gray" for m in modes])
+    axm.set_xlabel("Reference Z per bolt (lb)")
+    axm.set_title(f"Yield modes (governs: {out['mode']})", fontsize=9.6, fontweight="semibold")
+    axm.invert_yaxis()
+    axm.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    return fig

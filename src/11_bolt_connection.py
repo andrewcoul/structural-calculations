@@ -83,17 +83,8 @@ out = bolt_connection.run(
 out["report"].show()
 
 # %%
-#@title 6. Yield modes (chart)
-import matplotlib.pyplot as plt
-
-modes = out["modes"]
-fig, ax = plt.subplots(figsize=(7, 2.8))
-ax.barh(list(modes), list(modes.values()),
-        color=["tab:red" if m == out["mode"] else "tab:gray" for m in modes])
-ax.set_xlabel("Reference Z per bolt (lb)")
-ax.invert_yaxis()
-ax.grid(axis="x", alpha=0.3)
-fig.tight_layout()
+#@title 6. Bolt pattern and yield modes
+fig = bolt_connection.plot(out)
 
 # %%
 #@title 7. Save report as HTML (optional)

@@ -73,7 +73,7 @@ def _draw_moment_arc(ax, cx: float, cy: float, rx: float, ry: float, clockwise: 
     )
 
 
-def draw_beam_loads(ax, beam, title: str = ""):
+def draw_beam_loads(ax, beam, title: str = "", brace_pts=None, bracing_note: str = ""):
     """Draw a free-body diagram of a Beam (supports, UDLs/trapezoids, point loads, moments)."""
     L = float(beam.length)
     ax.set_xlim(-0.06 * L, 1.06 * L)
@@ -210,6 +210,15 @@ def draw_beam_loads(ax, beam, title: str = ""):
 
     # Beam bar
     ax.plot([0.0, L], [0.0, 0.0], color="#0f172a", lw=4.5, solid_capstyle="butt", zorder=5)
+
+    # Optional lateral brace markers
+    if brace_pts:
+        for xb in brace_pts:
+            ax.plot([xb], [0.0], marker="x", ms=6.5, mew=1.8, color="#0d9488", zorder=7)
+    if bracing_note:
+        ax.text(L, y_top_max + 0.08, bracing_note, ha="right", va="top", fontsize=7.8,
+                color="#0f766e", style="italic",
+                bbox=dict(boxstyle="round,pad=0.14", fc="white", ec="#99f6e4", lw=0.7, alpha=0.9), zorder=8)
 
     # Supports
     sup_h = 0.34

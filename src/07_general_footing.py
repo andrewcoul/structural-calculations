@@ -79,7 +79,7 @@ out = general_footing.run(
 out["report"].show()
 
 # %%
-#@title 6. Soil pressure plan (governing bearing combination)
+#@title 6. Soil pressure plan, critical shear planes, and section elevation
 fig = general_footing.plot(out)
 
 # %%

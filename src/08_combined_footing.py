@@ -94,7 +94,7 @@ out = combined_footing.run(
 out["report"].show()
 
 # %%
-#@title 7. Shear and moment diagrams (all LRFD combinations)
+#@title 7. Applied loads, bearing pressure, and LRFD shear/moment envelopes
 fig = combined_footing.plot(out)
 
 # %%

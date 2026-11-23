@@ -64,7 +64,7 @@ out = snow_loads.run(
 out["report"].show()
 
 # %%
-#@title 6. Drift surcharge plot
+#@title 6. Roof snow geometry and drift surcharge plot
 fig = snow_loads.plot(out, lower_roof_length_ft)
 
 # %%

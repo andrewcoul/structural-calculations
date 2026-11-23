@@ -186,6 +186,7 @@ def analyze(sheathing="Sheathing 7/16 in. 8d", spacing=4, sides=1, framing_G=0.5
                 "NDS 3.10.2")
 
     # deflection and drift (seismic, strength level, rho = 1.0)
+    drift_info = None
     if seismic_wall and Eh > 0:
         if not Ga:
             r.note("Ga not tabulated for this sheathing in this library: enter Ga_override to check drift.")
@@ -209,6 +210,7 @@ def analyze(sheathing="Sheathing 7/16 in. 8d", spacing=4, sides=1, framing_G=0.5
             dx = Cd * dsw / Ie
             r.check("Story drift Cd*delta/Ie", dx, drift_limit * height * 12, "in",
                     "ASCE 7-22 12.8.6, Table 12.12-1", note=f"b={b:g} ft, limit {drift_limit:g}h")
+            drift_info = dict(d1=d1, d2=d2, d3=d3, dsw=dsw, dx=dx, limit=drift_limit * height * 12, b=b)
     r.note("vn values: SDPWS 2021 Table 4.3A, blocked wood structural panels, DF-L/SP framing. "
            "Footnote 2 (3/8 and 7/16 panels may use 15/32 values at 16 in. studs) is not applied.")
     r.note("Line shear is distributed to segments in proportion to capacity (incl. aspect factor).")
@@ -217,8 +219,105 @@ def analyze(sheathing="Sheathing 7/16 in. 8d", spacing=4, sides=1, framing_G=0.5
            "da is the total hold-down slip/stretch at the drift load.")
     r.note("Check SDPWS 4.3.7.1 framing requirements (3x members) for 2 in. edge nailing, 10d at 3 in. "
            "or less, or vn > 980 plf per side in SDC D-F.")
-    return {"report": r, "rows": rows, "vn": vn, "Ga": Ga, "caps": caps}
+    geom = dict(height=height, bs=bs, method=method, sheathing=sheathing, spacing=spacing,
+                sides=sides, drift=drift_info)
+    return {"report": r, "rows": rows, "vn": vn, "Ga": Ga, "caps": caps, "geom": geom}
 
 
 def run(**kw):
     return analyze(**kw)
+
+
+def plot(out):
+    """Segmented shear wall elevation with segment shears, hold-downs, chords & deflection breakdown."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    g = out["geom"]
+    h = g["height"]
+    rows = out["rows"]
+    # Pick governing case (seismic if present else wind, or highest total shear)
+    cases = list(dict.fromkeys(r["Case"] for r in rows))
+    gov_case = max(cases, key=lambda c: sum(r["V seg (k)"] for r in rows if r["Case"] == c)) if cases else ""
+    seg_rows = [r for r in rows if r["Case"] == gov_case]
+
+    has_drift = g["drift"] is not None
+    if has_drift:
+        fig, (ax, axd) = plt.subplots(1, 2, figsize=(11.8, 4.8), gridspec_kw={"width_ratios": [1.55, 1.0]})
+    else:
+        fig, ax = plt.subplots(figsize=(8.0, 4.8))
+        axd = None
+
+    # --- Left: Segmented shear wall elevation ---
+    gap = max(2.2, 0.25 * h)
+    x = 0.0
+    V_tot = sum(r["V seg (k)"] for r in seg_rows)
+    for idx, sr in enumerate(seg_rows, 1):
+        b = sr["b (ft)"]
+        # Sheathed wall segment
+        ax.add_patch(Rectangle((x, 0), b, h, fc="#fef3c7", ec="#92400e", lw=1.8, hatch="///", zorder=2))
+        ax.add_patch(Rectangle((x, 0), b, h, fc="none", ec="#78350f", lw=1.8, zorder=3))
+        # Segment label inside box
+        ax.text(x + b / 2, h * 0.52,
+                f"Seg {idx}: b = {b:g} ft\nh/b = {sr['h/b']:.2f}\nV = {sr['V seg (k)']:.2f} k\nv = {sr['v (plf)']:.0f} plf",
+                ha="center", va="center", fontsize=8.3, fontweight="semibold", color="#1e293b",
+                bbox=dict(boxstyle="round,pad=0.28", fc="white", ec="#d97706", lw=0.9, alpha=0.94), zorder=6)
+        # Hold-down tension arrow (left / windward end, pulling down into foundation -> upward uplift on wall)
+        T = sr["T hold-down (k)"]
+        C = sr["C chord (k)"]
+        ax.annotate("", xy=(x + 0.18, -0.05 * h), xytext=(x + 0.18, -0.24 * h),
+                    arrowprops=dict(arrowstyle="-|>,head_length=0.4,head_width=0.25", color="#dc2626", lw=2.0),
+                    zorder=7)
+        ax.text(x + 0.18, -0.27 * h, f"T={T:.2f} k", ha="center", va="top", fontsize=8.0,
+                fontweight="bold", color="#dc2626")
+        # Compression chord arrow (right / leeward end, pushing down onto foundation)
+        ax.annotate("", xy=(x + b - 0.18, -0.24 * h), xytext=(x + b - 0.18, -0.02 * h),
+                    arrowprops=dict(arrowstyle="-|>,head_length=0.4,head_width=0.25", color="#2563eb", lw=2.0),
+                    zorder=7)
+        ax.text(x + b - 0.18, -0.27 * h, f"C={C:.2f} k", ha="center", va="top", fontsize=8.0,
+                fontweight="bold", color="#2563eb")
+        x += b + gap
+
+    L_tot = x - gap
+    # Ground / foundation line & top collector line
+    ax.plot([-1.2, L_tot + 1.2], [0, 0], color="#1e293b", lw=2.4, zorder=4)
+    ax.plot([-0.2, L_tot + 0.2], [h, h], color="#1e293b", lw=2.4, zorder=4)
+    # Top line shear arrow
+    ax.annotate("", xy=(0.0, h + 0.11 * h), xytext=(-0.32 * h, h + 0.11 * h),
+                arrowprops=dict(arrowstyle="-|>,head_length=0.5,head_width=0.3", color="#7c3aed", lw=2.5),
+                zorder=7)
+    ax.text(L_tot / 2, h + 0.12 * h,
+            f"Line shear V = {V_tot:.2f} k ({gov_case}, {g['method']})",
+            ha="center", va="bottom", fontsize=9.0, fontweight="bold", color="#6d28d9")
+    # Wall height dimension
+    ax.annotate("", xy=(L_tot + 0.7, h), xytext=(L_tot + 0.7, 0),
+                arrowprops=dict(arrowstyle="<->", color="#475569", lw=1.1))
+    ax.text(L_tot + 0.95, h / 2, f"h = {h:g} ft", rotation=90, ha="left", va="center", fontsize=8.5, color="#334155")
+
+    ax.set_xlim(-0.42 * h, L_tot + 2.0)
+    ax.set_ylim(-0.42 * h, h + 0.30 * h)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(f"Shear wall elevation ({g['sheathing']} @ {g['spacing']}\" o.c., {g['sides']} side)",
+                 fontsize=9.6, fontweight="semibold")
+
+    # --- Right: Three-term deflection breakdown (SDPWS Eq. 4.3-1) ---
+    if axd is not None:
+        d = g["drift"]
+        labels = ["Bending\n8vh³/(EAb)", "Panel shear\nvh/(1000Ga)", "Anchorage\nh·da/b", "Elastic δ_xe", "Story drift\nCd·δ/Ie"]
+        vals = [d["d1"], d["d2"], d["d3"], d["dsw"], d["dx"]]
+        cols = ["#3b82f6", "#f59e0b", "#ef4444", "#475569", "#0d9488"]
+        bars = axd.barh(labels, vals, color=cols, alpha=0.88)
+        axd.axvline(d["limit"], color="#dc2626", lw=1.5, ls="--", label=f"Allowable drift ({d['limit']:.2f} in)")
+        for bar, v in zip(bars, vals):
+            axd.text(v + 0.02 * max(d["limit"], d["dx"], 0.1), bar.get_y() + bar.get_height() / 2,
+                     f"{v:.3f} in", va="center", ha="left", fontsize=8.2)
+        axd.set_xlim(0, max(d["limit"], d["dx"]) * 1.24)
+        axd.invert_yaxis()
+        axd.set_xlabel("Deflection / Drift (in)")
+        axd.set_title(f"Deflection breakdown (controlling b = {d['b']:g} ft)", fontsize=9.6, fontweight="semibold")
+        axd.legend(loc="lower right", fontsize=8)
+        axd.grid(axis="x", alpha=0.3)
+
+    fig.tight_layout()
+    return fig

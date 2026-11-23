@@ -156,27 +156,41 @@ def run(SDS=1.0, SD1=0.6, S1=0.6, TL=8.0, risk_category="II", R=6.5, Omega0=3.0,
     r.note("ELF Method 2 (multi-period spectrum, 12.8.1.1) is not computed. Verify ELF is permitted "
            "(Table 12.6-1) and check the system height limits of Table 12.2-1.")
     r.note("Story drift (12.8.6, Cd) and P-delta (12.8.7) require a structural model.")
-    return {"report": r, "V": V, "Cs": Cs, "T": T, "k": k, "F": F, "hx": hx, "Vx": Vx, "SDC": cat}
+    return {"report": r, "V": V, "Cs": Cs, "T": T, "k": k, "F": F, "hx": hx, "Vx": Vx, "Mot": Mot, "SDC": cat}
 
 
 def plot(out):
     import matplotlib.pyplot as plt
 
     hx, F, Vx = out["hx"], out["F"], out["Vx"]
-    fig, ax = plt.subplots(1, 2, figsize=(8, 4), sharey=True)
-    ax[0].barh(hx, F, height=max(hx) * 0.04, color="tab:orange")
-    ax[0].set_xlabel("Fx (kip)")
+    Mot = out.get("Mot") or [float(sum(F[j] * (hx[j] - (hx[i - 1] if i else 0.0))
+                                       for j in range(i, len(F)))) for i in range(len(F))]
+    fig, ax = plt.subplots(1, 3, figsize=(10.8, 4.2), sharey=True)
+    ax[0].barh(hx, F, height=max(hx) * 0.055, color="tab:orange")
+    for h_i, f_i in zip(hx, F):
+        ax[0].text(f_i + 0.03 * max(F), h_i, f"{f_i:.1f}", va="center", ha="left", fontsize=8)
+    ax[0].set_xlim(0, max(F) * 1.24)
+    ax[0].set_xlabel("Story force Fx (kip)")
     ax[0].set_ylabel("Height (ft)")
+
     lv = np.concatenate([[0.0], hx])
     xs, ys = [], []
     for i, v in enumerate(Vx):
         xs += [v, v]
         ys += [lv[i], lv[i + 1]]
-    ax[1].plot(xs, ys, color="tab:blue")
+    ax[1].fill_betweenx(ys, 0, xs, color="tab:blue", alpha=0.22)
+    ax[1].plot(xs, ys, color="tab:blue", lw=1.8)
     ax[1].set_xlim(left=0)
-    ax[1].set_xlabel("Story shear (kip)")
+    ax[1].set_xlabel("Story shear Vx (kip)")
+
+    m_vals = list(Mot) + [0.0]
+    ax[2].fill_betweenx(lv, 0, m_vals, color="tab:red", alpha=0.22)
+    ax[2].plot(m_vals, lv, color="tab:red", lw=1.8)
+    ax[2].set_xlim(left=0)
+    ax[2].set_xlabel("Overturning Mot (kip-ft)")
+
     for a in ax:
         a.grid(alpha=0.3)
-    fig.suptitle(f"ELF: V = {out['V']:.1f} kip, Cs = {out['Cs']:.4f}, T = {out['T']:.3f} s")
+    fig.suptitle(f"ELF (SDC {out['SDC']}): V = {out['V']:.1f} kip, Cs = {out['Cs']:.4f}, T = {out['T']:.3f} s")
     fig.tight_layout()
     return fig

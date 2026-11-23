@@ -321,36 +321,145 @@ def run(Lx=8.0, Ly=8.0, h=24.0, col_x=18.0, col_y=18.0, ped_height=0.0,
     r.note("Bars along x are assumed in the bottom layer. Hooks, dowels, and the pedestal "
            "itself are not designed.")
     gb = gov["bear"]
+    geom = dict(h=h, ped_height=ped_height, soil_cover=soil_cover, dx=dx, dy=dy, davg=davg,
+                bar_x=bar_x, s_x=s_x, bar_y=bar_y, s_y=s_y, cover=cover, col_loads=col_loads)
     return {"report": r, "pressure": gb[4] if gb else None, "pressures": pressures,
-            "Lx": Lx, "Ly": Ly, "col": (col_x, col_y), "W": W}
+            "Lx": Lx, "Ly": Ly, "col": (col_x, col_y), "W": W, "geom": geom}
 
 
 def plot(out, n=81):
-    """Plan view of the governing soil pressure (ksf) with the zero-pressure line."""
+    """Plan view (soil pressure + critical shear planes) and section elevation along x."""
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    from ..load_plots import _case_summary, _draw_moment_arc
 
     pr = out["pressure"]
     Lx, Ly = out["Lx"], out["Ly"]
-    fig, ax = plt.subplots(figsize=(6.5, 6.5 * min(max(Ly / Lx, 0.4), 1.6)))
-    ax.add_patch(plt.Rectangle((-Lx / 2, -Ly / 2), Lx, Ly, fill=False, lw=1.5))
     cx, cy = out["col"][0] / 12, out["col"][1] / 12
-    ax.add_patch(plt.Rectangle((-cx / 2, -cy / 2), cx, cy, color="0.5", alpha=0.6))
+    g = out["geom"]
+
+    fig, (ax, axe) = plt.subplots(1, 2, figsize=(12.2, 5.2), gridspec_kw={"width_ratios": [1.15, 1.0]})
+
+    # --- Left: Plan view with soil pressure contours + critical shear perimeters ---
+    ax.add_patch(Rectangle((-Lx / 2, -Ly / 2), Lx, Ly, fill=False, lw=1.6, ec="#0f172a", zorder=4))
+    ax.add_patch(Rectangle((-cx / 2, -cy / 2), cx, cy, fc="0.5", ec="#0f172a", alpha=0.65, lw=1.2, zorder=5))
     if pr is not None:
         xs = np.linspace(-Lx / 2, Lx / 2, n)
         ys = np.linspace(-Ly / 2, Ly / 2, n)
         X, Y = np.meshgrid(xs, ys)
         Z = pr.q(X, Y)
-        cs = ax.contourf(X, Y, Z, levels=15, cmap="YlOrRd", alpha=0.85)
-        fig.colorbar(cs, ax=ax, label="soil pressure (ksf)")
+        cs = ax.contourf(X, Y, Z, levels=15, cmap="YlOrRd", alpha=0.82, zorder=1)
+        fig.colorbar(cs, ax=ax, shrink=0.86, label="Soil pressure (ksf)")
         if not pr.full_contact:
-            ax.contour(X, Y, pr.a + pr.b * X + pr.c * Y, levels=[0], colors="k", linestyles="--")
-        ax.plot([pr.ex], [pr.ey], "k+", ms=12, mew=2)
-        ax.set_title(f"Governing service soil pressure\nqmax = {pr.qmax:.2f} ksf, "
-                     f"{100 * pr.contact_ratio:.0f}% contact (+ = resultant, -- = zero line)", fontsize=10)
+            ax.contour(X, Y, pr.a + pr.b * X + pr.c * Y, levels=[0], colors="k", linestyles="--", zorder=6)
+        ax.plot([pr.ex], [pr.ey], "k+", ms=11, mew=2, zorder=7)
+        ax.set_title(f"Plan: soil pressure & critical shear\nqmax = {pr.qmax:.2f} ksf, "
+                     f"{100 * pr.contact_ratio:.0f}% contact (+ resultant)", fontsize=9.8)
+    else:
+        ax.set_title("Plan: footing & critical shear", fontsize=9.8)
+
+    # Punching shear perimeter (d_avg / 2 around column)
+    px = min(cx + g["davg"] / 12, Lx)
+    py = min(cy + g["davg"] / 12, Ly)
+    ax.add_patch(Rectangle((-px / 2, -py / 2), px, py, fill=False, ec="#1d4ed8", lw=1.6, ls="--",
+                           label="2-way punching (d/2)", zorder=6))
+    # One-way shear planes (d from column face)
+    x_ow = cx / 2 + g["dx"] / 12
+    y_ow = cy / 2 + g["dy"] / 12
+    ow_labeled = False
+    if x_ow < Lx / 2:
+        for sgn in (-1, 1):
+            ax.plot([sgn * x_ow, sgn * x_ow], [-Ly / 2, Ly / 2], color="#047857", lw=1.3, ls=":",
+                    label=None if ow_labeled else "1-way shear (d)", zorder=6)
+            ow_labeled = True
+    if y_ow < Ly / 2:
+        for sgn in (-1, 1):
+            ax.plot([-Lx / 2, Lx / 2], [sgn * y_ow, sgn * y_ow], color="#047857", lw=1.3, ls=":",
+                    label=None if ow_labeled else "1-way shear (d)", zorder=6)
+            ow_labeled = True
+    ax.legend(loc="lower right", fontsize=7.6, framealpha=0.9)
     ax.set_aspect("equal")
     ax.set_xlabel("x (ft)")
     ax.set_ylabel("y (ft)")
-    ax.set_xlim(-Lx / 2 - 0.3, Lx / 2 + 0.3)
-    ax.set_ylim(-Ly / 2 - 0.3, Ly / 2 + 0.3)
+    ax.set_xlim(-Lx / 2 - 0.35, Lx / 2 + 0.35)
+    ax.set_ylim(-Ly / 2 - 0.35, Ly / 2 + 0.35)
+
+    # --- Right: Elevation / section along x ---
+    hf = g["h"] / 12.0
+    hp = g["ped_height"] / 12.0
+    sc = g["soil_cover"]
+    col_stub = max(hp, 0.9 + sc)
+    # Footing + pedestal/column
+    axe.add_patch(Rectangle((-Lx / 2, 0), Lx, hf, fc="#cbd5e1", ec="#1e293b", lw=1.5, zorder=3))
+    axe.add_patch(Rectangle((-cx / 2, hf), cx, col_stub, fc="#cbd5e1", ec="#1e293b", lw=1.5, zorder=3))
+    # Soil cover
+    if sc > 0:
+        axe.add_patch(Rectangle((-Lx / 2, hf), (Lx - cx) / 2, sc, fc="#d6b48a", alpha=0.45, ec="none", zorder=2))
+        axe.add_patch(Rectangle((cx / 2, hf), (Lx - cx) / 2, sc, fc="#d6b48a", alpha=0.45, ec="none", zorder=2))
+        axe.plot([-Lx / 2 - 0.5, -cx / 2], [hf + sc, hf + sc], color="#92400e", lw=1.4, zorder=4)
+        axe.plot([cx / 2, Lx / 2 + 0.5], [hf + sc, hf + sc], color="#92400e", lw=1.4, zorder=4)
+        axe.text(Lx / 2 - 0.1, hf + sc + 0.08, f"soil {sc:g} ft", ha="right", va="bottom",
+                 fontsize=7.8, color="#92400e")
+    # Bottom rebar mat line + dots
+    y_bar = g["cover"] / 12.0
+    axe.plot([-Lx / 2 + 0.25, Lx / 2 - 0.25], [y_bar, y_bar], color="#dc2626", lw=2.0, zorder=5)
+    n_dots = min(max(int(round(Lx * 12 / g["s_y"])), 4), 13)
+    axe.plot(np.linspace(-Lx / 2 + 0.3, Lx / 2 - 0.3, n_dots), [y_bar + 0.08] * n_dots,
+             "o", ms=3.2, color="#b91c1c", zorder=6)
+
+    # Applied service loads at top of pedestal/column
+    cl = g["col_loads"]
+    y_top = hf + col_stub
+    P_txt = _case_summary({c: v[0] for c, v in cl.items()}, "k")
+    My_txt = _case_summary({c: v[2] for c, v in cl.items()}, "k-ft")
+    Vx_txt = _case_summary({c: v[3] for c, v in cl.items()}, "k")
+    if P_txt:
+        axe.annotate("", xy=(0, y_top + 0.04), xytext=(0, y_top + 1.05),
+                     arrowprops=dict(arrowstyle="-|>,head_length=0.5,head_width=0.3", color="#dc2626", lw=2.2),
+                     zorder=7)
+        axe.text(0, y_top + 1.12, f"P = {P_txt}", ha="center", va="bottom", fontsize=8.2,
+                 fontweight="bold", color="#dc2626",
+                 bbox=dict(boxstyle="round,pad=0.16", fc="white", ec="#dc2626", lw=0.7), zorder=8)
+    if My_txt:
+        _draw_moment_arc(axe, 0, y_top, 0.08 * Lx, 0.38, clockwise=(sum(v[2] for v in cl.values()) >= 0), color="#b45309")
+        axe.text(0.11 * Lx, y_top + 0.32, f"My = {My_txt}", ha="left", va="center", fontsize=7.8,
+                 fontweight="semibold", color="#b45309")
+    if Vx_txt:
+        axe.annotate("", xy=(-cx / 2 - 0.04, y_top - 0.15), xytext=(-cx / 2 - 0.18 * Lx, y_top - 0.15),
+                     arrowprops=dict(arrowstyle="-|>,head_length=0.4,head_width=0.25", color="#7c3aed", lw=1.8),
+                     zorder=7)
+        axe.text(-cx / 2 - 0.20 * Lx, y_top - 0.15, f"Vx = {Vx_txt}", ha="right", va="center",
+                 fontsize=7.8, fontweight="semibold", color="#7c3aed")
+
+    # Soil pressure slice along y = 0 beneath footing
+    y_bot_lim = -1.6
+    if pr is not None and pr.qmax > 0:
+        xs_s = np.linspace(-Lx / 2, Lx / 2, 120)
+        qs = pr.q(xs_s, np.zeros_like(xs_s))
+        sc_q = 1.25 / max(float(qs.max()), pr.qmax, 1e-9)
+        axe.fill_between(xs_s, -qs * sc_q - 0.18, -0.18, color="#f59e0b", alpha=0.35, zorder=2)
+        axe.plot(xs_s, -qs * sc_q - 0.18, color="#b45309", lw=1.4, zorder=3)
+        for xa in np.linspace(-Lx / 2, Lx / 2, 9):
+            qv = float(pr.q(np.array([xa]), np.array([0.0]))[0])
+            if qv > 1e-6:
+                axe.annotate("", xy=(xa, -0.18), xytext=(xa, -qv * sc_q - 0.18),
+                             arrowprops=dict(arrowstyle="-|>,head_length=0.28,head_width=0.16", color="#b45309", lw=0.9))
+        axe.text(-Lx / 2, -float(qs[0]) * sc_q - 0.28, f"{qs[0]:.2f} ksf", ha="left", va="top", fontsize=7.8, color="#92400e")
+        axe.text(Lx / 2, -float(qs[-1]) * sc_q - 0.28, f"{qs[-1]:.2f} ksf", ha="right", va="top", fontsize=7.8, color="#92400e")
+        y_bot_lim = -1.85
+
+    # Dimensions & rebar caption
+    axe.text(Lx / 2 + 0.15, hf / 2, f"h = {g['h']:g}\"", ha="left", va="center", fontsize=8.2, color="#1e293b")
+    axe.text(0, y_bot_lim - 0.28,
+             f"Lx = {Lx:g} ft  |  Bottom mat: #{g['bar_x']} @ {g['s_x']:g}\" (x), #{g['bar_y']} @ {g['s_y']:g}\" (y)",
+             ha="center", va="top", fontsize=8.0, color="#1e293b",
+             bbox=dict(boxstyle="round,pad=0.24", fc="#f8fafc", ec="#cbd5e1"))
+    axe.set_xlim(-Lx / 2 - 0.9, Lx / 2 + 1.35)
+    axe.set_ylim(y_bot_lim - 0.85, y_top + 1.75)
+    axe.set_xlabel("x (ft)")
+    axe.set_ylabel("Elevation (ft)")
+    axe.grid(alpha=0.25)
+    axe.set_title("Section along x: loads, rebar & bearing", fontsize=9.8)
     fig.tight_layout()
     return fig

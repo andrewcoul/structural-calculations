@@ -52,9 +52,8 @@ out = wind_loads.run(
 out["report"].show()
 
 # %%
-#@title 4. Velocity pressure profile
-_ke = wind_loads.Ke(ground_elevation_ft) if use_Ke else 1.0
-fig = wind_loads.plot_profile(V, exposure, Kzt, _ke, Kd, G, height=max(out["h"] * 1.5, 30))
+#@title 4. Wind pressures, C&C zones, and velocity pressure profile
+fig = wind_loads.plot(out)
 
 # %%
 #@title 5. Save report as HTML (optional)

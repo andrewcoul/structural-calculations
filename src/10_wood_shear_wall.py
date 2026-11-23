@@ -76,7 +76,11 @@ out = wood_shear_wall.run(
 out["report"].show()
 
 # %%
-#@title 6. Save report as HTML (optional)
+#@title 6. Wall elevation and deflection breakdown
+fig = wood_shear_wall.plot(out)
+
+# %%
+#@title 7. Save report as HTML (optional)
 save_report = False  #@param {type:"boolean"}
 if save_report:
     path = out["report"].save_html("wood_shear_wall.html")

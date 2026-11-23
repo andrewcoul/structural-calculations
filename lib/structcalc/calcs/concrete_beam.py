@@ -271,6 +271,133 @@ def run(section_type="Rectangular", b=12.0, h=24.0, bf=48.0, hf=4.0,
     if tbeam:
         r.note("T-beam: flange width bf must satisfy ACI 6.3.2.1. For negative moment the "
                "top bars are assumed within the web width for spacing checks.")
+    geom = dict(section_type=section_type, b=b, h=h, bf=bf, hf=hf, n_bot=n_bot, bar_bot=bar_bot,
+                n_top=n_top, bar_top=bar_top, cover=cover, stirrup=stirrup, legs=legs,
+                s_stirrup=s_stirrup, d_bot=d_bot, d_top=d_top, a_pos=flex_pos["a"],
+                db_b=db_b, db_t=db_t, ds=ds)
     return {"report": r, "per_case": per_case, "combos": results, "sec_pos": sec_pos,
             "sec_neg": sec_neg, "beam": beam, "length": length, "supports": supports,
-            "governing": {"pos": gp, "neg": gn, "shear": gv}}
+            "governing": {"pos": gp, "neg": gn, "shear": gv}, "geom": geom}
+
+
+def plot(out):
+    """Beam loads, V/M/deflection diagrams (left) + reinforced cross-section detail (right)."""
+    import matplotlib.pyplot as plt
+    from matplotlib.gridspec import GridSpec
+    from matplotlib.patches import Circle, Polygon, Rectangle
+
+    from ..load_plots import draw_beam_loads
+
+    name = out["governing"]["pos"]
+    res = next(r for n, _, r in out["combos"] if n == name)
+    g = out["geom"]
+
+    fig = plt.figure(figsize=(12.2, 8.2))
+    gs = GridSpec(4, 2, figure=fig, width_ratios=[2.15, 1.05], height_ratios=[1.2, 1.0, 1.0, 1.0],
+                  wspace=0.22, hspace=0.28)
+    ax0 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[1, 0], sharex=ax0)
+    ax2 = fig.add_subplot(gs[2, 0], sharex=ax0)
+    ax3 = fig.add_subplot(gs[3, 0], sharex=ax0)
+    axs = fig.add_subplot(gs[:, 1])
+
+    draw_beam_loads(ax0, out["beam"], title=f"{name} (deflection with gross Ig, factored loads)")
+    ax1.fill_between(res.x, res.V, color="tab:blue", alpha=0.3)
+    ax1.plot(res.x, res.V, color="tab:blue")
+    ax1.set_ylabel("V (kip)")
+    ax2.fill_between(res.x, res.M, color="tab:red", alpha=0.3)
+    ax2.plot(res.x, res.M, color="tab:red")
+    ax2.set_ylabel("M (kip-ft)")
+    ax3.plot(res.x, -res.defl, color="tab:green")
+    ax3.set_ylabel("Defl (in)")
+    ax3.set_xlabel("x (ft)")
+    for a in (ax1, ax2, ax3):
+        a.axhline(0, color="k", lw=0.6)
+        a.grid(alpha=0.3)
+    for a in (ax0, ax1, ax2):
+        plt.setp(a.get_xticklabels(), visible=False)
+
+    # Cross-section detail (origin at bottom center of web, y up to h)
+    b, h, bf, hf = g["b"], g["h"], g["bf"], g["hf"]
+    tbeam = g["section_type"] == "T-beam"
+    if tbeam:
+        poly = [(-b / 2, 0), (b / 2, 0), (b / 2, h - hf), (bf / 2, h - hf),
+                (bf / 2, h), (-bf / 2, h), (-bf / 2, h - hf), (-b / 2, h - hf)]
+        w_tot = bf
+    else:
+        poly = [(-b / 2, 0), (b / 2, 0), (b / 2, h), (-b / 2, h)]
+        w_tot = b
+    axs.add_patch(Polygon(poly, closed=True, fc="#e2e8f0", ec="#1e293b", lw=1.6, zorder=1))
+
+    # Compression block depth a (+M)
+    a_blk = min(g["a_pos"], h)
+    if a_blk > 0:
+        if tbeam and a_blk <= hf:
+            axs.add_patch(Rectangle((-bf / 2, h - a_blk), bf, a_blk, fc="#38bdf8", alpha=0.25, ec="none", zorder=2))
+        elif tbeam:
+            axs.add_patch(Rectangle((-bf / 2, h - hf), bf, hf, fc="#38bdf8", alpha=0.25, ec="none", zorder=2))
+            axs.add_patch(Rectangle((-b / 2, h - a_blk), b, a_blk - hf, fc="#38bdf8", alpha=0.25, ec="none", zorder=2))
+        else:
+            axs.add_patch(Rectangle((-b / 2, h - a_blk), b, a_blk, fc="#38bdf8", alpha=0.25, ec="none", zorder=2))
+        axs.plot([-w_tot / 2, w_tot / 2], [h - a_blk, h - a_blk], ls="--", lw=1.1, color="#0284c7", zorder=3)
+        axs.text(w_tot / 2 + 0.04 * w_tot, h - a_blk, f"a = {g['a_pos']:.2f}\"",
+                 ha="left", va="center", fontsize=8, color="#0369a1")
+
+    # Stirrup loop
+    cov, ds = g["cover"], g["ds"]
+    if g["s_stirrup"] > 0 and ds > 0:
+        axs.add_patch(Rectangle((-b / 2 + cov + ds / 2, cov + ds / 2),
+                                b - 2 * cov - ds, h - 2 * cov - ds,
+                                fill=False, ec="#475569", lw=1.6, zorder=4))
+
+    # Rebar layers
+    def _draw_layer(n, db, y_bar, col):
+        if n <= 0:
+            return
+        x_edge = b / 2 - cov - ds - db / 2
+        xs = [0.0] if n == 1 else np.linspace(-x_edge, x_edge, n)
+        for xb in xs:
+            axs.add_patch(Circle((xb, y_bar), max(db / 2, 0.28), fc=col, ec="#0f172a", lw=0.8, zorder=6))
+
+    y_bot = h - g["d_bot"]
+    y_top = h - g["d_top"]
+    _draw_layer(g["n_bot"], g["db_b"], y_bot, "#dc2626")
+    _draw_layer(g["n_top"], g["db_t"], y_top, "#2563eb")
+
+    # Dimension annotations
+    pad_x = max(0.38 * w_tot, 4.0)
+    pad_y = max(0.24 * h, 3.8)
+    # b width at bottom
+    axs.annotate("", xy=(b / 2, -0.09 * h), xytext=(-b / 2, -0.09 * h),
+                 arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+    axs.text(0, -0.12 * h, f"bw = {b:g}\"", ha="center", va="top", fontsize=8.5, color="#1e293b")
+    # h height on left
+    lx = -w_tot / 2 - 0.14 * w_tot
+    axs.annotate("", xy=(lx, h), xytext=(lx, 0),
+                 arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+    axs.text(lx - 0.04 * w_tot, h / 2, f"h = {h:g}\"", rotation=90, ha="right", va="center", fontsize=8.5)
+    # d depth on right
+    rx = w_tot / 2 + 0.08 * w_tot
+    axs.annotate("", xy=(rx, h), xytext=(rx, y_bot),
+                 arrowprops=dict(arrowstyle="<->", color="#b91c1c", lw=1.0))
+    axs.text(rx + 0.04 * w_tot, 0.5 * (h + y_bot), f"d = {g['d_bot']:.1f}\"", rotation=90,
+             ha="left", va="center", fontsize=8.2, color="#b91c1c")
+    if tbeam:
+        axs.annotate("", xy=(bf / 2, h + 0.08 * h), xytext=(-bf / 2, h + 0.08 * h),
+                     arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+        axs.text(0, h + 0.10 * h, f"bf = {bf:g}\", hf = {hf:g}\"", ha="center", va="bottom", fontsize=8.2)
+
+    # Bar summary caption
+    stir = f"#{g['stirrup']} ({g['legs']}-leg) @ {g['s_stirrup']:g}\"" if g["s_stirrup"] > 0 else "no stirrups"
+    top_txt = f"Top: {g['n_top']} #{g['bar_top']}" if g["n_top"] else "Top: none"
+    bot_txt = f"Bot: {g['n_bot']} #{g['bar_bot']}"
+    axs.text(0, -0.22 * h, f"{bot_txt}  |  {top_txt}\nStirrups: {stir}  |  Cover: {cov:g}\"",
+             ha="center", va="top", fontsize=8.2, color="#1e293b",
+             bbox=dict(boxstyle="round,pad=0.3", fc="#f8fafc", ec="#cbd5e1"))
+
+    axs.set_aspect("equal")
+    axs.set_xlim(-w_tot / 2 - pad_x, w_tot / 2 + pad_x * 1.15)
+    axs.set_ylim(-0.36 * h, h + pad_y)
+    axs.axis("off")
+    axs.set_title("Cross-section & rebar detail", fontsize=10, fontweight="semibold")
+    return fig

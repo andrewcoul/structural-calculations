@@ -162,5 +162,27 @@ def test_load_schematic_plots():
 
     cc = concrete_column.run(case_loads={"D": (200, 30, -15, 10, 10), "L": (120, 20, -10, 5, 5)})
     fig = concrete_column.plot(cc)
-    assert len(fig.axes) == 3
+    assert len(fig.axes) == 4
     plt.close(fig)
+
+    from structcalc.calcs import (
+        bolt_connection, combined_footing, concrete_beam, general_footing,
+        nail_connection, retaining_wall, seismic_loads, snow_loads,
+        wind_loads, wood_shear_wall,
+    )
+    for mod, kw in [
+        (concrete_beam, dict(section_type="T-beam", w={"D": 1.0, "L": 1.2})),
+        (concrete_column, dict(shape="Circular spiral", case_loads={"D": (200, 20, -10, 0, 0)})),
+        (general_footing, dict(col_loads={"D": (80, 0, 0, 0, 0), "W": (0, 0, 40, 5, 0)})),
+        (combined_footing, dict(col1={"D": (80, 0)}, col2={"D": (120, 0), "W": (0, 60)})),
+        (retaining_wall, dict(surcharge=100, strip_q=200, P_D=2.0)),
+        (wood_shear_wall, dict()),
+        (bolt_connection, dict(n_rows=2, n_per_row=3, theta_main=45.0, load=12000)),
+        (nail_connection, dict(install="Toe-nail", lateral_load=200, withdrawal_load=50)),
+        (wind_loads, dict()),
+        (seismic_loads, dict()),
+        (snow_loads, dict(roof_type="Gable", theta=20.0, drift=False)),
+    ]:
+        fig = mod.plot(mod.run(**kw))
+        assert len(fig.axes) >= 1
+        plt.close(fig)

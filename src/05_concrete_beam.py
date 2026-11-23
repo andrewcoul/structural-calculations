@@ -90,12 +90,8 @@ out = concrete_beam.run(
 out["report"].show()
 
 # %%
-#@title 7. Loads and diagrams (governing positive-moment combination)
-from structcalc.beam import plot
-
-name = out["governing"]["pos"]
-res = next(r for n, _, r in out["combos"] if n == name)
-fig = plot(res, title=f"{name} (deflection with gross Ig, factored loads)", beam=out["beam"])
+#@title 7. Loads, cross-section detail, and diagrams
+fig = concrete_beam.plot(out)
 
 # %%
 #@title 8. Save report as HTML (optional)

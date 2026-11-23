@@ -282,7 +282,123 @@ def run(V=115.0, exposure="C", Kzt=1.0, ground_elev=0.0, use_Ke=True, Kd=0.85, G
            "not reduced for area (conservative).")
     r.note("Torsional load cases (Fig. 27.3-8) and roof uplift combinations are not generated.")
     r.note("Tornado loads (Ch. 32) are required for Risk Category III/IV in tornado-prone regions.")
-    return {"report": r, "qh": qh, "h": h, "directions": directions, "cc": cc}
+    # Capture Dir 1 surface pressures for the building diagram
+    cp_lw1 = cp_leeward_wall(L_across / B_ridge)
+    p_ww1 = press(qh, 0.8)
+    p_lw1 = press(qh, cp_lw1)
+    if theta >= 10:
+        ww_cp = cp_roof_windward(theta, h / L_across)
+        lw_cp = cp_roof_leeward(theta, h / L_across)
+        p_rww1 = (min(press(qh, ww_cp[0])[0], press(qh, ww_cp[1])[0]),
+                  max(press(qh, ww_cp[0])[1], press(qh, ww_cp[1])[1]))
+        p_rlw1 = press(qh, lw_cp)
+    else:
+        z0 = flat_roof_zones(h, L_across)[0]
+        p_rww1 = press(qh, z0[2])
+        p_rlw1 = press(qh, flat_roof_zones(h, L_across)[-1][2])
+    geom = dict(V=V, exposure=exposure, Kzt=Kzt, ke=ke, Kd=Kd, G=G, roof_type=roof_type,
+                theta=theta, h_eave=h_eave, rise=rise, ridge=ridge, h=h,
+                B_ridge=B_ridge, L_across=L_across, a=a,
+                p_ww=p_ww1, p_lw=p_lw1, p_rww=p_rww1, p_rlw=p_rlw1)
+    return {"report": r, "qh": qh, "h": h, "directions": directions, "cc": cc, "geom": geom}
+
+
+def plot(out):
+    """Building MWFRS pressure elevation (Dir 1), C&C wall zone plan, and velocity pressure profile."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Polygon, Rectangle
+
+    g = out["geom"]
+    fig, (axb, axc, axq) = plt.subplots(1, 3, figsize=(13.2, 4.4), gridspec_kw={"width_ratios": [1.4, 0.95, 0.95]})
+
+    # --- Panel 0: Building cross-section with Dir 1 MWFRS net pressures ---
+    L, he, rd = g["L_across"], g["h_eave"], g["ridge"]
+    pts = [(0, 0), (L, 0), (L, he), (L / 2, rd), (0, he)] if g["rise"] > 0 else [(0, 0), (L, 0), (L, he), (0, he)]
+    axb.add_patch(Polygon(pts, closed=True, fc="#e2e8f0", ec="#1e293b", lw=1.6, zorder=2))
+    axb.plot([-0.28 * L, 1.28 * L], [0, 0], color="#475569", lw=1.5, zorder=3)
+
+    # Windward wall arrows (positive -> pushing onto left wall)
+    pww_hi = max(abs(x) for x in g["p_ww"])
+    for yw in np.linspace(0.18 * he, 0.85 * he, 4):
+        axb.annotate("", xy=(0, yw), xytext=(-0.20 * L, yw),
+                     arrowprops=dict(arrowstyle="-|>,head_length=0.4,head_width=0.24", color="#2563eb", lw=1.6),
+                     zorder=5)
+    axb.text(-0.22 * L, he * 0.5, f"Windward\n+{pww_hi:.1f} psf", ha="right", va="center",
+             fontsize=8.0, fontweight="bold", color="#1d4ed8")
+
+    # Leeward wall arrows (suction -> pulling away to right)
+    plw_min = min(g["p_lw"])
+    for yw in np.linspace(0.18 * he, 0.85 * he, 4):
+        axb.annotate("", xy=(L + 0.20 * L, yw), xytext=(L, yw),
+                     arrowprops=dict(arrowstyle="-|>,head_length=0.4,head_width=0.24", color="#dc2626", lw=1.6),
+                     zorder=5)
+    axb.text(L + 0.22 * L, he * 0.5, f"Leeward\n{plw_min:.1f} psf", ha="left", va="center",
+             fontsize=8.0, fontweight="bold", color="#b91c1c")
+
+    # Roof windward & leeward arrows
+    rww_lo, rww_hi = min(g["p_rww"]), max(g["p_rww"])
+    rlw_lo = min(g["p_rlw"])
+    # Windward slope midpoint
+    xm1, ym1 = L * 0.25, 0.5 * (he + rd)
+    axb.annotate("", xy=(xm1 - 0.08 * L, ym1 + 0.22 * he), xytext=(xm1, ym1),
+                 arrowprops=dict(arrowstyle="-|>,head_length=0.4,head_width=0.24", color="#7c3aed", lw=1.6),
+                 zorder=5)
+    axb.text(xm1 - 0.06 * L, ym1 + 0.25 * he, f"WW roof\n{rww_lo:.1f} / {rww_hi:+.1f} psf",
+             ha="center", va="bottom", fontsize=7.8, fontweight="semibold", color="#6d28d9")
+    # Leeward slope midpoint
+    xm2, ym2 = L * 0.75, 0.5 * (he + rd)
+    axb.annotate("", xy=(xm2 + 0.08 * L, ym2 + 0.22 * he), xytext=(xm2, ym2),
+                 arrowprops=dict(arrowstyle="-|>,head_length=0.4,head_width=0.24", color="#dc2626", lw=1.6),
+                 zorder=5)
+    axb.text(xm2 + 0.06 * L, ym2 + 0.25 * he, f"LW roof\n{rlw_lo:.1f} psf",
+             ha="center", va="bottom", fontsize=7.8, fontweight="semibold", color="#b91c1c")
+
+    axb.text(L / 2, he * 0.42, f"{g['roof_type']} ({g['theta']:g}°)\nL={L:g} ft, h={g['h']:.1f} ft",
+             ha="center", va="center", fontsize=8.0, color="#334155")
+    axb.set_xlim(-0.50 * L, 1.50 * L)
+    axb.set_ylim(-0.14 * max(rd, 10), rd + 0.62 * he)
+    axb.axis("off")
+    axb.set_title("MWFRS Dir 1 net pressures (governing ±GCpi)", fontsize=9.2, fontweight="semibold")
+
+    # --- Panel 1: Plan view of C&C wall Zones 4 & 5 ---
+    B = g["B_ridge"]
+    a = min(g["a"], B / 2, L / 2)
+    axc.add_patch(Rectangle((0, 0), B, L, fc="#f8fafc", ec="#1e293b", lw=1.5, zorder=1))
+    band = max(0.06 * min(B, L), 1.5)
+    # Zone 4 (interior walls) in blue, Zone 5 (corner length a) in red-orange
+    for (x0, y0, w0, h0) in [(a, 0, B - 2 * a, band), (a, L - band, B - 2 * a, band),
+                             (0, a, band, L - 2 * a), (B - band, a, band, L - 2 * a)]:
+        axc.add_patch(Rectangle((x0, y0), w0, h0, fc="#3b82f6", alpha=0.75, ec="none", zorder=2))
+    for (cx, cy) in [(0, 0), (B - a, 0), (0, L - band), (B - a, L - band)]:
+        axc.add_patch(Rectangle((cx, cy), a, band, fc="#ef4444", alpha=0.85, ec="none", zorder=3))
+    for (cx, cy) in [(0, 0), (B - band, 0), (0, L - a), (B - band, L - a)]:
+        axc.add_patch(Rectangle((cx, cy), band, a, fc="#ef4444", alpha=0.85, ec="none", zorder=3))
+    cc4, cc5 = out["cc"][0], out["cc"][1]
+    axc.text(B / 2, L * 0.55, f"Zone 4 (blue):\n+{cc4['p + (psf)']:.1f} / {cc4['p - (psf)']:.1f} psf",
+             ha="center", va="center", fontsize=8.0, fontweight="semibold", color="#1d4ed8")
+    axc.text(B / 2, L * 0.30, f"Zone 5 (red, a={g['a']:.1f} ft):\n+{cc5['p + (psf)']:.1f} / {cc5['p - (psf)']:.1f} psf",
+             ha="center", va="center", fontsize=8.0, fontweight="semibold", color="#b91c1c")
+    axc.set_aspect("equal")
+    axc.set_xlim(-0.08 * B, 1.08 * B)
+    axc.set_ylim(-0.08 * L, 1.08 * L)
+    axc.set_xlabel(f"B = {B:g} ft")
+    axc.set_ylabel(f"L = {L:g} ft")
+    axc.set_title("C&C wall zones (plan)", fontsize=9.2, fontweight="semibold")
+
+    # --- Panel 2: Velocity pressure profile ---
+    height = max(g["h"] * 1.5, 30.0)
+    z = np.linspace(0, height, 200)
+    q = [qz(zi, g["V"], g["exposure"], g["Kzt"], g["ke"]) for zi in z]
+    axq.plot(q, z, label="qz", color="tab:blue")
+    axq.plot(np.array(q) * g["Kd"] * g["G"] * 0.8, z, label="WW wall p (ext.)", color="tab:orange")
+    axq.axhline(g["h"], color="#64748b", ls=":", lw=1.0, label=f"h = {g['h']:.1f} ft")
+    axq.set_xlabel("Pressure (psf)")
+    axq.set_ylabel("z (ft)")
+    axq.grid(alpha=0.3)
+    axq.legend(fontsize=7.6)
+    axq.set_title(f"qz profile (Exp {g['exposure']}, V={g['V']:g})", fontsize=9.2, fontweight="semibold")
+    fig.tight_layout()
+    return fig
 
 
 def plot_profile(V=115.0, exposure="C", Kzt=1.0, ke=1.0, Kd=0.85, G=0.85, height=60.0):

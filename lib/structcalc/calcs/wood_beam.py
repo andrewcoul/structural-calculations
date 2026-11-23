@@ -202,8 +202,11 @@ def analyze(size="2x10", material="Sawn lumber", species="DF-L", grade="No.2", m
     if material == "Glulam":
         r.note("Glulam: CV and CL are not combined; the lesser governs (NDS 5.3.6). "
                "Negative moment uses Fbx- (compression zone stressed in tension).")
+    brace_note = bracing + (f" @ {brace_interval:g} ft" if bracing == "At interval" else "")
+    show_braces = brace_pts if bracing in ("At interval", "At supports only") else None
     return {"report": r, "member": m, "section": sec, "governing": best, "per_case": per_case,
-            "combos": results, "beam": beam, "length": length, "supports": supports}
+            "combos": results, "beam": beam, "length": length, "supports": supports,
+            "brace_pts": show_braces, "bracing_note": f"Bracing: {brace_note}"}
 
 
 def run(size="2x10", auto_select=False, **kw):

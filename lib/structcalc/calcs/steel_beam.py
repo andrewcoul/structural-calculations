@@ -155,8 +155,11 @@ def analyze(section, Fy=50.0, method="LRFD", span_type="Simple span", span=20.0,
     r.note("Deflection: unfactored loads. Roof live and snow are added together (conservative).")
     if p["kind"] == "W" and "NONCOMPACT" in f0.detail:
         r.note("Web is noncompact: AISC F4 not implemented. Verify by hand.")
+    brace_note = bracing + (f" @ {brace_interval:g} ft" if bracing == "At interval" else "")
+    show_braces = brace_pts if bracing in ("At interval", "At supports only") else None
     return {"report": r, "section": p, "governing": gov, "per_case": per_case,
-            "combos": results, "beam": beam, "length": length, "supports": supports}
+            "combos": results, "beam": beam, "length": length, "supports": supports,
+            "brace_pts": show_braces, "bracing_note": f"Bracing: {brace_note}"}
 
 
 def run(section="W18X35", auto_select=False, depth_filter="", **kw):

@@ -257,7 +257,7 @@ class Beam:
         return res
 
 
-def plot(result: BeamResult, title="", show_defl=True, beam=None):
+def plot(result: BeamResult, title="", show_defl=True, beam=None, brace_pts=None, bracing_note=""):
     import matplotlib.pyplot as plt
 
     from .load_plots import draw_beam_loads
@@ -268,7 +268,7 @@ def plot(result: BeamResult, title="", show_defl=True, beam=None):
                            gridspec_kw={"height_ratios": ratios})
     i0 = 0
     if beam is not None:
-        draw_beam_loads(ax[0], beam, title=title)
+        draw_beam_loads(ax[0], beam, title=title, brace_pts=brace_pts, bracing_note=bracing_note)
         i0 = 1
     ax[i0].fill_between(result.x, result.V, color="tab:blue", alpha=0.3)
     ax[i0].plot(result.x, result.V, color="tab:blue")

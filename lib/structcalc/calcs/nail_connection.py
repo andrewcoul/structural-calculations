@@ -148,5 +148,110 @@ def run(fastener="Common nail", size="16d", screw_length=2.5, D_override=0.0, Fy
            "splitting (NDS 12.1.6.2); no C_Delta applies for D < 1/4 in.")
     r.note("Cg = 1.0 for D < 1/4 in (NDS 12.3.6). Fyb values per NDS footnotes; verify the "
            "product.")
+    geom = dict(fastener=fastener, size=size, kind=kind, L=L, D=D, H=H, p=p, ls=ls,
+                t_side=t_side, t_main=t_main, install=install, Fyb=Fyb,
+                Gs=Gs, Gm=Gm, lateral_load=lateral_load, withdrawal_load=withdrawal_load)
     return {"report": r, "Z": Z, "mode": mode, "modes": modes, "Zp": Zp, "Wp": Wp,
-            "Za": Za, "n_required": n_req, "p": p, "ls": ls, "D": D, "L": L}
+            "Za": Za, "n_required": n_req, "p": p, "ls": ls, "D": D, "L": L, "geom": geom}
+
+
+def plot(out):
+    """Fastener cross-section sketch (left) + lateral value vs penetration curve (right)."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.patches import Polygon, Rectangle
+
+    g = out["geom"]
+    D, L, p, ls = g["D"], g["L"], g["p"], g["ls"]
+    t_s, t_m = g["t_side"], g["t_main"]
+    toe = g["install"] == "Toe-nail"
+
+    fig, (ax, axp) = plt.subplots(1, 2, figsize=(11.5, 4.1), gridspec_kw={"width_ratios": [1.15, 1.0]})
+
+    # --- Left: Cross-section of members and fastener ---
+    if toe:
+        # Side member vertical (stud/joist) resting on horizontal main member (plate)
+        w_stud = max(t_s, 1.5)
+        h_stud = max(L * 1.15, 3.0)
+        h_plate = max(t_m, L * 0.9)
+        ax.add_patch(Rectangle((0, 0), w_stud, h_stud, fc="#fde68a", ec="#92400e", lw=1.5, zorder=2))
+        ax.add_patch(Rectangle((-0.9 * w_stud, -h_plate), 2.8 * w_stud, h_plate,
+                               fc="#fef3c7", ec="#92400e", lw=1.5, zorder=1))
+        # Toe-nail starts L/3 above plate on left face, driven at 30 deg from vertical
+        x0, y0 = 0.0, L / 3.0
+        ang = math.radians(30.0)
+        x1 = x0 + L * math.sin(ang)
+        y1 = y0 - L * math.cos(ang)
+        ax.plot([x0, x1], [y0, y1], color="#334155", lw=max(3.5, D * 22), solid_capstyle="butt", zorder=6)
+        ax.plot([x0 - 0.14, x0 + 0.06], [y0 + 0.08, y0 - 0.04], color="#0f172a", lw=3.0, zorder=7)
+        ax.text(w_stud / 2, h_stud * 0.78, "Side member\n(toe-nailed)", ha="center", va="center", fontsize=8)
+        ax.text(w_stud * 0.9, -h_plate * 0.65, "Main member", ha="center", va="center", fontsize=8)
+        ax.text(x1 + 0.25, y1, f"p = {p:.2f}\" ({p / D:.1f}D)\n30° @ L/3", ha="left", va="center",
+                fontsize=8, fontweight="semibold", color="#dc2626")
+        ax.set_xlim(-0.85 * w_stud, 1.95 * w_stud)
+        ax.set_ylim(-h_plate - 0.35, h_stud + 0.45)
+    else:
+        # Side member on left (x = -t_s .. 0), main member on right (x = 0 .. t_m)
+        H_blk = max(2.4, 0.75 * (t_s + t_m))
+        ax.add_patch(Rectangle((-t_s, -H_blk / 2), t_s, H_blk, fc="#fde68a", ec="#92400e", lw=1.5, zorder=2))
+        ax.add_patch(Rectangle((0, -H_blk / 2), t_m, H_blk, fc="#fef3c7", ec="#92400e", lw=1.5, zorder=1))
+        ax.plot([0, 0], [-H_blk / 2, H_blk / 2], color="#78350f", lw=1.6, zorder=3)
+        # Fastener shank from x = -t_s to x = -t_s + L
+        x_tip = -t_s + L
+        half_d = max(D / 2, 0.045 * H_blk)
+        shank = [(-t_s, -half_d), (x_tip - half_d, -half_d), (x_tip, 0),
+                 (x_tip - half_d, half_d), (-t_s, half_d)]
+        ax.add_patch(Polygon(shank, closed=True, fc="#475569", ec="#0f172a", lw=1.0, zorder=6))
+        # Head
+        head_r = max((g["H"] or 2.2 * D) / 2, 2.0 * half_d)
+        ax.add_patch(Rectangle((-t_s - 0.09, -head_r), 0.09, 2 * head_r, fc="#1e293b", ec="#0f172a", zorder=7))
+        # 6D and 10D vertical reference ticks in main member
+        for mult, col in ((6, "#dc2626"), (10, "#059669")):
+            xm = mult * D
+            if xm <= t_m + 0.25:
+                ax.plot([xm, xm], [-0.32 * H_blk, 0.32 * H_blk], ls="--", lw=1.0, color=col, zorder=4)
+                ax.text(xm, 0.34 * H_blk, f"{mult}D", ha="center", va="bottom", fontsize=7.5, color=col)
+        # Dimensions: t_side, penetration p, and L
+        yd = -H_blk / 2 - 0.16 * H_blk
+        ax.annotate("", xy=(0, yd), xytext=(-t_s, yd), arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+        ax.text(-t_s / 2, yd - 0.05 * H_blk, f"ls={t_s:g}\"", ha="center", va="top", fontsize=8)
+        ax.annotate("", xy=(p, yd), xytext=(0, yd), arrowprops=dict(arrowstyle="<->", color="#dc2626", lw=1.1))
+        ax.text(p / 2, yd - 0.05 * H_blk, f"p={p:.2f}\" ({p / D:.1f}D)", ha="center", va="top",
+                fontsize=8, fontweight="semibold", color="#dc2626")
+        # Load arrows
+        if g["lateral_load"] > 0:
+            ax.annotate("", xy=(-t_s / 2, H_blk * 0.44), xytext=(-t_s / 2, H_blk * 0.72),
+                        arrowprops=dict(arrowstyle="-|>,head_length=0.45,head_width=0.25", color="#2563eb", lw=2.0),
+                        zorder=8)
+            ax.text(-t_s / 2, H_blk * 0.75, f"V={g['lateral_load']:g} lb", ha="center", va="bottom",
+                    fontsize=8, fontweight="bold", color="#2563eb")
+        if g["withdrawal_load"] > 0:
+            ax.annotate("", xy=(-t_s - 0.75, 0), xytext=(-t_s - 0.12, 0),
+                        arrowprops=dict(arrowstyle="-|>,head_length=0.45,head_width=0.25", color="#7c3aed", lw=2.0),
+                        zorder=8)
+            ax.text(-t_s - 0.78, 0, f"W={g['withdrawal_load']:g} lb", ha="right", va="center",
+                    fontsize=8, fontweight="bold", color="#7c3aed")
+        ax.text(-t_s / 2, -H_blk * 0.34, "Side", ha="center", va="center", fontsize=8, color="#78350f")
+        ax.text(t_m / 2, -H_blk * 0.34, "Main", ha="center", va="center", fontsize=8, color="#78350f")
+        ax.set_xlim(-t_s - 1.15, max(t_m, x_tip) + 0.65)
+        ax.set_ylim(-H_blk * 0.92, H_blk * 0.98)
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(f"{g['size']} {g['fastener']} (L={L:g}\", D={D:g}\") — {g['install']}",
+                 fontsize=9.4, fontweight="semibold")
+
+    # --- Right: Lateral value vs penetration ---
+    pens = np.linspace(6 * D, max(p * 1.1, 12 * D), 40)
+    Zs = [min(wc.yield_modes(D, pp, ls, wc.fe_wood(g["Gm"], D), wc.fe_wood(g["Gs"], D), g["Fyb"]).values())
+          for pp in pens]
+    axp.plot(pens / D, Zs, color="tab:blue", lw=1.8)
+    axp.axvline(p / D, color="tab:red", ls="--", lw=1.4, label=f"this connection ({p / D:.1f}D)")
+    axp.axvline(10, color="k", lw=0.7, ls=":", label="10D (full value)")
+    axp.set_xlabel("Penetration p / D")
+    axp.set_ylabel("Reference Z (lb)")
+    axp.set_title("Lateral capacity vs. penetration", fontsize=9.4, fontweight="semibold")
+    axp.grid(alpha=0.3)
+    axp.legend(fontsize=8)
+    fig.tight_layout()
+    return fig

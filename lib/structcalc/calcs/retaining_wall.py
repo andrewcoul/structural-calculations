@@ -441,32 +441,86 @@ def run(H_stem=10.0, H_retained=10.0, t_top=12.0, t_bot=12.0, toe=2.0, heel=4.0,
            "not checked; use the stem-by-height table for cut-off decisions.")
     geom = dict(B=B, toe=toe, tt=tt, tb=tb, hf=hf, H_stem=H_stem, H_retained=H_retained, x_bt=x_bt,
                 rise=rise, H_vb=H_vb, key_depth=key_depth / 12, key_width=key_width / 12,
-                h_water=h_water, toe_cover=toe_cover, y=y, pe=pe, pw=pw)
+                h_water=h_water, toe_cover=toe_cover, y=y, pe=pe, pw=pw,
+                surcharge=surcharge, strip_q=strip_q, strip_offset=strip_offset, strip_width=strip_width,
+                Dp=Dp, passive_ignore=passive_ignore, Pp=Pp, passive_efp=passive_efp,
+                P_D=P_D, P_L=P_L, ecc=ecc)
     return {"report": r, "forces": F, "geom": geom, "stem_rows": stem_rows, "ftg_rows": ftg_rows,
             "stability": stab_rows}
 
 
 def plot(out):
-    """Wall section with the service lateral pressure on the virtual back and bearing pressure."""
+    """Wall section with service lateral, surcharge, passive, and bearing pressures."""
     import matplotlib.pyplot as plt
 
     g = out["geom"]
-    fig, ax = plt.subplots(figsize=(8, 6.5))
+    fig, ax = plt.subplots(figsize=(8.6, 6.8))
     B, toe, tt, tb, hf = g["B"], g["toe"], g["tt"], g["tb"], g["hf"]
     # concrete
     ftg = [(0, 0), (B, 0), (B, hf), (toe + tb, hf), (toe + tt, hf + g["H_stem"]),
            (toe, hf + g["H_stem"]), (toe, hf), (0, hf)]
-    ax.fill(*zip(*ftg), color="0.75", ec="k")
+    ax.fill(*zip(*ftg), color="0.75", ec="k", zorder=3)
     if g["key_depth"] > 0:
         ax.fill([toe, toe + g["key_width"], toe + g["key_width"], toe],
-                [0, 0, -g["key_depth"], -g["key_depth"]], color="0.75", ec="k")
+                [0, 0, -g["key_depth"], -g["key_depth"]], color="0.75", ec="k", zorder=3)
     # soil surface
-    ax.plot([g["x_bt"], B, B + 2], [hf + g["H_retained"], g["H_vb"], g["H_vb"] + 2 * g["rise"] / max(B - g["x_bt"], 1e-9)],
-            color="saddlebrown", lw=2)
+    slope = g["rise"] / max(B - g["x_bt"], 1e-9)
+    ax.plot([g["x_bt"], B, B + 2.5], [hf + g["H_retained"], g["H_vb"], g["H_vb"] + 2.5 * slope],
+            color="saddlebrown", lw=2, zorder=4)
     if g["toe_cover"] > 0:
-        ax.plot([-1.5, toe], [hf + g["toe_cover"]] * 2, color="saddlebrown", lw=2)
+        ax.plot([-1.8, toe], [hf + g["toe_cover"]] * 2, color="saddlebrown", lw=2, zorder=4)
     if g["h_water"] > 0:
-        ax.plot([B - 0.5, B + 3], [g["h_water"]] * 2, color="tab:blue", ls="--")
+        ax.plot([B - 0.5, B + 3], [g["h_water"]] * 2, color="tab:blue", ls="--", zorder=4)
+        ax.text(B + 2.8, g["h_water"] + 0.15, "GWT", fontsize=8, color="tab:blue", ha="right")
+
+    # Uniform surcharge arrows on backfill surface
+    if g.get("surcharge", 0) > 0:
+        xs_s = np.linspace(g["x_bt"] + 0.2, B + 1.8, 6)
+        for xs in xs_s:
+            ys = hf + g["H_retained"] + (xs - g["x_bt"]) * slope
+            ax.annotate("", xy=(xs, ys + 0.05), xytext=(xs, ys + 0.95),
+                        arrowprops=dict(arrowstyle="-|>,head_length=0.3,head_width=0.18", color="#2563eb", lw=1.2),
+                        zorder=5)
+        ax.plot([xs_s[0], xs_s[-1]],
+                [hf + g["H_retained"] + (xs_s[0] - g["x_bt"]) * slope + 0.95,
+                 hf + g["H_retained"] + (xs_s[-1] - g["x_bt"]) * slope + 0.95],
+                color="#2563eb", lw=1.4, label=f"surcharge ({g['surcharge']:g} psf)", zorder=5)
+
+    # Strip surcharge arrows
+    if g.get("strip_q", 0) > 0:
+        x1 = g["x_bt"] + g["strip_offset"]
+        x2 = x1 + g["strip_width"]
+        for xs in np.linspace(x1, x2, 4):
+            ys = hf + g["H_retained"] + (xs - g["x_bt"]) * slope
+            ax.annotate("", xy=(xs, ys + 0.05), xytext=(xs, ys + 1.35),
+                        arrowprops=dict(arrowstyle="-|>,head_length=0.32,head_width=0.2", color="#7c3aed", lw=1.5),
+                        zorder=6)
+        ax.text(0.5 * (x1 + x2), hf + g["H_retained"] + (0.5 * (x1 + x2) - g["x_bt"]) * slope + 1.45,
+                f"strip {g['strip_q']:g} psf", ha="center", va="bottom", fontsize=8, color="#7c3aed", fontweight="semibold")
+
+    # Stem axial load
+    if g.get("P_D", 0) or g.get("P_L", 0):
+        x_ax = toe + tt / 2 + g.get("ecc", 0) / 12
+        y_top = hf + g["H_stem"]
+        ax.annotate("", xy=(x_ax, y_top + 0.05), xytext=(x_ax, y_top + 1.3),
+                    arrowprops=dict(arrowstyle="-|>,head_length=0.45,head_width=0.26", color="#dc2626", lw=2.0),
+                    zorder=7)
+        ax.text(x_ax, y_top + 1.38, f"P = {g['P_D'] + g['P_L']:g} k/ft", ha="center", va="bottom",
+                fontsize=8, color="#dc2626", fontweight="bold")
+
+    # Passive pressure wedge at toe
+    if g.get("Pp", 0) > 0:
+        y_top_p = hf + g["toe_cover"] - g["passive_ignore"]
+        y_bot_p = -g["key_depth"]
+        if y_top_p > y_bot_p:
+            p_top_v = g["passive_efp"] * g["passive_ignore"]
+            p_bot_v = g["passive_efp"] * g["Dp"]
+            sc_p = 1.4 / max(p_bot_v, 1e-9)
+            ax.fill([0, -p_top_v * sc_p, -p_bot_v * sc_p, 0],
+                    [y_top_p, y_top_p, y_bot_p, y_bot_p],
+                    color="#0d9488", alpha=0.35, ec="#0f766e", lw=1.2,
+                    label=f"passive Pp={g['Pp']:.2f} k/ft", zorder=4)
+
     # pressure diagram on the virtual back (scaled)
     pe, pw, y = g["pe"], g["pw"], g["y"]
     ptot = pe + pw
@@ -492,7 +546,7 @@ def plot(out):
     ax.set_aspect("equal")
     ax.set_xlabel("x from toe (ft)")
     ax.set_ylabel("y from footing bottom (ft)")
-    ax.set_title("Retaining wall section, service pressures (static)")
+    ax.set_title("Retaining wall section & service pressures (static)")
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(alpha=0.25)
     fig.tight_layout()

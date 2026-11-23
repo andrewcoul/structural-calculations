@@ -133,7 +133,7 @@ def run(L=20.0, B=6.0, h=30.0, x1=2.0, c1x=16.0, c1y=16.0, x2=16.0, c2x=18.0, c2
         asd_rows.append({"Combination": name, "R (k)": R, "e (ft)": e, "q left (ksf)": ql / B,
                          "q right (ksf)": qr / B, "Contact (ft)": cont})
         if gov is None or qmax / qall > gov[0]:
-            gov = (qmax / qall, name, qmax, qall)
+            gov = (qmax / qall, name, qmax, qall, (ql / B, qr / B, cont))
     if gov:
         r.result("Governing bearing combination", gov[1])
         r.check("Soil bearing", gov[2], gov[3], "ksf", "IBC 1806 / ASCE 7-22 2.4", note=f"[{gov[1]}]")
@@ -283,27 +283,92 @@ def run(L=20.0, B=6.0, h=30.0, x1=2.0, c1x=16.0, c1y=16.0, x2=16.0, c2x=18.0, c2
     r.note("Transverse steel: each column load is carried by a strip under the column "
            "(column width + strip_ext x d each side), net pressure uniform across B.")
     r.note("Horizontal column shears are not included. Development lengths and hooks are not checked.")
-    return {"report": r, "diagrams": diags, "L": L, "B": B, "x_cols": x_cols, "c_cols": c_cols}
+    gov_soil = (gov[1], *gov[4]) if (gov and len(gov) > 4) else None
+    return {"report": r, "diagrams": diags, "L": L, "B": B, "h": h, "x_cols": x_cols, "c_cols": c_cols,
+            "col1": col1, "col2": col2, "gov_soil": gov_soil}
 
 
 def plot(out):
-    """Shear and moment envelopes along the length (LRFD combinations)."""
+    """Footing elevation with service loads & governing bearing pressure above LRFD V and M envelopes."""
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
 
-    fig, ax = plt.subplots(2, 1, figsize=(9, 5.5), sharex=True)
+    from ..load_plots import _case_summary, _draw_moment_arc
+
+    L, B = out["L"], out["B"]
+    hf = out.get("h", 30.0) / 12.0
+    fig, ax = plt.subplots(3, 1, figsize=(9.5, 7.8), sharex=True,
+                           gridspec_kw={"height_ratios": [1.35, 1.0, 1.0]})
+
+    # --- Top panel: Footing FBD + service loads + governing bearing pressure ---
+    a0 = ax[0]
+    a0.add_patch(Rectangle((0, 0), L, hf, fc="#cbd5e1", ec="#1e293b", lw=1.5, zorder=3))
+    col_h = 0.65 * hf
+    for idx, (xc, cc, cld) in enumerate(zip(out["x_cols"], out["c_cols"], (out["col1"], out["col2"])), 1):
+        a0.add_patch(Rectangle((xc - cc / 2, hf), cc, col_h, fc="#94a3b8", ec="#1e293b", lw=1.3, zorder=3))
+        y_top = hf + col_h
+        P_txt = _case_summary({c: v[0] for c, v in cld.items()}, "k")
+        M_txt = _case_summary({c: v[1] for c, v in cld.items()}, "k-ft")
+        if P_txt:
+            a0.annotate("", xy=(xc, y_top + 0.04), xytext=(xc, y_top + 0.85 * hf),
+                        arrowprops=dict(arrowstyle="-|>,head_length=0.5,head_width=0.3", color="#dc2626", lw=2.2),
+                        zorder=7)
+            a0.text(xc, y_top + 0.92 * hf, f"Col {idx}: {P_txt}", ha="center", va="bottom",
+                    fontsize=8.2, fontweight="bold", color="#dc2626",
+                    bbox=dict(boxstyle="round,pad=0.16", fc="white", ec="#dc2626", lw=0.7), zorder=8)
+        if M_txt:
+            _draw_moment_arc(a0, xc, y_top + 0.1 * hf, 0.032 * L, 0.34 * hf,
+                             clockwise=(sum(v[1] for v in cld.values()) >= 0), color="#b45309")
+            side_x = xc + (0.042 * L if xc < L / 2 else -0.042 * L)
+            ha = "left" if xc < L / 2 else "right"
+            a0.text(side_x, y_top + 0.25 * hf, f"M={M_txt}", ha=ha, va="center",
+                    fontsize=7.8, fontweight="semibold", color="#b45309")
+
+    # Governing service soil pressure underneath
+    gs = out.get("gov_soil")
+    y_bot = -0.9 * hf
+    if gs is not None:
+        gname, ql, qr, cont = gs
+        xs = np.linspace(0, L, 200)
+        q_arr = fd.pressure_1d_at(xs, ql, qr, cont, L)
+        qmax = max(ql, qr, 1e-9)
+        sc = 0.72 * hf / qmax
+        a0.fill_between(xs, -q_arr * sc - 0.12 * hf, -0.12 * hf, color="#f59e0b", alpha=0.35, zorder=2)
+        a0.plot(xs, -q_arr * sc - 0.12 * hf, color="#b45309", lw=1.4, zorder=3)
+        for xa in np.linspace(0, L, 11):
+            qv = float(fd.pressure_1d_at(np.array([xa]), ql, qr, cont, L)[0])
+            if qv > 1e-6:
+                a0.annotate("", xy=(xa, -0.12 * hf), xytext=(xa, -qv * sc - 0.12 * hf),
+                            arrowprops=dict(arrowstyle="-|>,head_length=0.25,head_width=0.15", color="#b45309", lw=0.9))
+        a0.text(0.2, -ql * sc - 0.18 * hf, f"{ql:.2f} ksf", ha="left", va="top", fontsize=7.8, color="#92400e")
+        a0.text(L - 0.2, -qr * sc - 0.18 * hf, f"{qr:.2f} ksf", ha="right", va="top", fontsize=7.8, color="#92400e")
+        a0.text(L / 2, -0.96 * hf, f"Service bearing ({gname})", ha="center", va="top",
+                fontsize=7.8, color="#78350f", style="italic")
+        y_bot = -1.25 * hf
+
+    a0.set_xlim(-0.05 * L, 1.05 * L)
+    a0.set_ylim(y_bot, hf + col_h + 1.35 * hf)
+    a0.set_yticks([])
+    a0.set_ylabel("Loads")
+    a0.spines["top"].set_visible(False)
+    a0.spines["right"].set_visible(False)
+    a0.spines["left"].set_visible(False)
+    a0.grid(axis="x", alpha=0.25)
+    a0.set_title(f"Combined footing ({L:g} × {B:g} ft, h = {out.get('h', 30):g}\") — loads & LRFD envelopes",
+                 fontsize=10, fontweight="semibold")
+
     for name, x, V, M in out["diagrams"]:
-        ax[0].plot(x, V, lw=0.8, alpha=0.6)
-        ax[1].plot(x, M, lw=0.8, alpha=0.6, label=name)
-    for a in ax:
+        ax[1].plot(x, V, lw=0.9, alpha=0.65)
+        ax[2].plot(x, M, lw=0.9, alpha=0.65, label=name)
+    for a in ax[1:]:
         a.axhline(0, color="k", lw=0.6)
         for xc, cc in zip(out["x_cols"], out["c_cols"]):
             a.axvspan(xc - cc / 2, xc + cc / 2, color="0.6", alpha=0.3)
         a.grid(alpha=0.3)
-    ax[0].set_ylabel("Vu (kip)")
-    ax[1].set_ylabel("Mu (kip-ft)\n+ = bottom tension")
-    ax[1].set_xlabel("x from left end (ft)")
-    ax[0].set_title("LRFD shear and moment along the footing (grey = columns)")
+    ax[1].set_ylabel("Vu (kip)")
+    ax[2].set_ylabel("Mu (kip-ft)\n+ = bottom tension")
+    ax[2].set_xlabel("x from left end (ft)")
     if len(out["diagrams"]) <= 12:
-        ax[1].legend(fontsize=7, ncol=2)
+        ax[2].legend(fontsize=7, ncol=2)
     fig.tight_layout()
     return fig

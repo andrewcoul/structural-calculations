@@ -68,7 +68,8 @@ out["report"].show()
 from structcalc.beam import plot
 
 name, seg, res = out["governing"]["flex"]
-fig = plot(res, title=f"{out['section']['name']} — {name} ({method} combination)", beam=out["beam"])
+fig = plot(res, title=f"{out['section']['name']} — {name} ({method} combination)",
+           beam=out["beam"], brace_pts=out["brace_pts"], bracing_note=out["bracing_note"])
 
 # %%
 #@title 6. Save report as HTML (optional)

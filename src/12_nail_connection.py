@@ -59,28 +59,8 @@ out = nail_connection.run(
 out["report"].show()
 
 # %%
-#@title 5. Lateral value vs penetration (chart)
-import matplotlib.pyplot as plt
-import numpy as np
-
-from structcalc import wood_conn as wc
-
-D_, L_ = out["D"], out["L"]
-pens = np.linspace(6 * D_, max(out["p"], 12 * D_), 40)
-G_s = wc.SPECIES_G[side_member]
-G_m = wc.SPECIES_G[main_member]
-Fyb_ = Fyb_override or (wc.nail_fyb(D_) if fastener != "Wood screw" else wc.screw_fyb(D_))
-Zs = [min(wc.yield_modes(D_, pp, out["ls"], wc.fe_wood(G_m, D_), wc.fe_wood(G_s, D_), Fyb_).values())
-      for pp in pens]
-fig, ax = plt.subplots(figsize=(7, 3))
-ax.plot(pens / D_, Zs)
-ax.axvline(out["p"] / D_, color="tab:red", ls="--", label="this connection")
-ax.axvline(10, color="k", lw=0.6, label="10D")
-ax.set_xlabel("penetration p / D")
-ax.set_ylabel("reference Z (lb)")
-ax.grid(alpha=0.3)
-ax.legend()
-fig.tight_layout()
+#@title 5. Fastener cross-section and lateral capacity vs. penetration
+fig = nail_connection.plot(out)
 
 # %%
 #@title 6. Save report as HTML (optional)

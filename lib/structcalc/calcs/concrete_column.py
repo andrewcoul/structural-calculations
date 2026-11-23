@@ -270,9 +270,65 @@ def run(shape="Rectangular tied", b=16.0, h=16.0, D=18.0, fc=4000.0, fy=60000.0,
     r.note("Design curve is cut at phi Pn,max with a horizontal line (ACI 22.4.2.1).")
     if shape == "Rectangular spiral":
         r.note("Rectangular spiral: circular spiral with core diameter = least side - 2 cover.")
+    geom = dict(shape=shape, b=b, h=h, D=D, cover=cover, tie=tie, tie_db=tie_db,
+                s_tie=s_tie, bar=bar, db=db, nbars=nbars, spiral=spiral, circ=circ)
     return {"report": r, "diagram_x": dx, "diagram_y": dy, "rows": rows, "bars": pts,
             "sec_x": sec_x, "sec_y": sec_y, "circular": circ,
-            "loads": dict(H=lu, case_loads=case_loads)}
+            "loads": dict(H=lu, case_loads=case_loads), "geom": geom}
+
+
+def _draw_column_section(ax, out):
+    from matplotlib.patches import Circle, Rectangle
+
+    g = out["geom"]
+    b, h, D, cov, tie_db, db = g["b"], g["h"], g["D"], g["cover"], g["tie_db"], g["db"]
+    if g["circ"]:
+        ax.add_patch(Circle((0, 0), D / 2, fc="#e2e8f0", ec="#1e293b", lw=1.6, zorder=1))
+        ax.add_patch(Circle((0, 0), D / 2 - cov - tie_db / 2, fill=False, ec="#475569",
+                            lw=1.6, ls="--" if g["spiral"] else "-", zorder=3))
+        span = D
+        dim_lbl = f"D = {D:g}\""
+    else:
+        ax.add_patch(Rectangle((-b / 2, -h / 2), b, h, fc="#e2e8f0", ec="#1e293b", lw=1.6, zorder=1))
+        if g["spiral"]:
+            r_sp = min(b, h) / 2 - cov - tie_db / 2
+            ax.add_patch(Circle((0, 0), r_sp, fill=False, ec="#475569", lw=1.6, ls="--", zorder=3))
+        else:
+            ax.add_patch(Rectangle((-b / 2 + cov + tie_db / 2, -h / 2 + cov + tie_db / 2),
+                                   b - 2 * cov - tie_db, h - 2 * cov - tie_db,
+                                   fill=False, ec="#475569", lw=1.6, zorder=3))
+        span = max(b, h)
+        dim_lbl = f"b = {b:g}\" × h = {h:g}\""
+
+    for xb, yb in out["bars"]:
+        ax.add_patch(Circle((xb, yb), max(db / 2, 0.028 * span), fc="#dc2626", ec="#0f172a", lw=0.8, zorder=5))
+
+    # Axes hints
+    ax.axhline(0, color="#94a3b8", lw=0.7, ls=":", zorder=2)
+    ax.axvline(0, color="#94a3b8", lw=0.7, ls=":", zorder=2)
+    ax.text(span * 0.56, 0, "x", fontsize=8, color="#64748b", va="center")
+    ax.text(0, span * 0.56, "y", fontsize=8, color="#64748b", ha="center")
+
+    # Outer dimensions
+    hw = (D if g["circ"] else b) / 2
+    hh = (D if g["circ"] else h) / 2
+    ax.annotate("", xy=(hw, -hh - 0.12 * span), xytext=(-hw, -hh - 0.12 * span),
+                arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+    ax.text(0, -hh - 0.16 * span, dim_lbl, ha="center", va="top", fontsize=8.5, color="#1e293b")
+    if not g["circ"]:
+        ax.annotate("", xy=(-hw - 0.12 * span, hh), xytext=(-hw - 0.12 * span, -hh),
+                    arrowprops=dict(arrowstyle="<->", color="#334155", lw=1.0))
+        ax.text(-hw - 0.16 * span, 0, f"h = {h:g}\"", rotation=90, ha="right", va="center", fontsize=8.5)
+
+    trans_lbl = f"#{g['tie']} spiral @ {g['s_tie']:g}\"" if g["spiral"] else f"#{g['tie']} ties @ {g['s_tie']:g}\""
+    ax.text(0, -hh - 0.30 * span, f"{g['nbars']} #{g['bar']} bars  |  {trans_lbl}  |  cover {cov:g}\"",
+            ha="center", va="top", fontsize=8.2, color="#1e293b",
+            bbox=dict(boxstyle="round,pad=0.25", fc="#f8fafc", ec="#cbd5e1"))
+    ax.set_aspect("equal")
+    ax.set_xlim(-0.78 * span, 0.78 * span)
+    ax.set_ylim(-0.92 * span, 0.68 * span)
+    ax.axis("off")
+    ax.set_title("Cross-section & bar layout", fontsize=10, fontweight="semibold")
 
 
 def plot(out):
@@ -285,12 +341,17 @@ def plot(out):
     pm_axes = [("x", out["diagram_x"], "Mux (k-ft)")]
     if not out["circular"]:
         pm_axes.append(("y", out["diagram_y"], "Muy (k-ft)"))
-    n_tot = 1 + len(pm_axes)
-    ratios = [0.9] + [1.2] * len(pm_axes)
-    fig, ax = plt.subplots(1, n_tot, figsize=(4.5 * n_tot + 0.5, 5.0),
-                           gridspec_kw={"width_ratios": ratios})
+
+    if out["circular"]:
+        fig, axes = plt.subplots(1, 3, figsize=(12.2, 4.6), gridspec_kw={"width_ratios": [0.95, 0.95, 1.35]})
+        ax_load, ax_sec, pm_ax_list = axes[0], axes[1], [axes[2]]
+    else:
+        fig, grid = plt.subplots(2, 2, figsize=(11.0, 9.0), gridspec_kw={"height_ratios": [1.0, 1.05]})
+        ax_load, ax_sec = grid[0, 0], grid[0, 1]
+        pm_ax_list = [grid[1, 0], grid[1, 1]]
+
     draw_column_loads(
-        ax[0],
+        ax_load,
         H=ld["H"],
         P_cases={c: v[0] for c, v in cl.items()},
         Mx_top={c: v[1] for c, v in cl.items()},
@@ -299,7 +360,8 @@ def plot(out):
         My_bot={c: v[4] for c, v in cl.items()},
         title="Applied service loads",
     )
-    for a, (nm, d, key) in zip(ax[1:], pm_axes):
+    _draw_column_section(ax_sec, out)
+    for a, (nm, d, key) in zip(pm_ax_list, pm_axes):
         a.plot(d["Mn"] / 12, d["Pn"], "--", color="gray", label="Nominal (Pn,max cap)")
         a.plot(d["phiMn"] / 12, d["phiPn"], color="tab:blue", lw=2, label="Design (phi)")
         pts = [(row[key], row["Pu (k)"]) for row in out["rows"]]
