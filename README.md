@@ -141,3 +141,12 @@ structural-calculations/
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for module conventions and development guidelines.
+
+---
+
+## License & Attribution
+
+This repository's code and notebooks are licensed under the [MIT License](LICENSE).
+
+Referenced building codes and design standards (IBC, ASCE/SEI 7, AISC 360, AWC NDS, AWC SDPWS, ACI 318) and the AISC Shapes Database v16.0 properties in `lib/structcalc/data/` remain the intellectual property of their respective publishers (ICC, ASCE, AISC, AWC, ACI).
+
